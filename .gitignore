@@ -1,0 +1,4 @@
+target/
+**/Verifier.toml
+**/contract
+**/target
