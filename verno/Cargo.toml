@@ -1,0 +1,23 @@
+[package]
+name = "verno"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+formal_verification.workspace = true
+clap.workspace = true
+console.workspace = true
+noirc_driver.workspace = true
+noirc_frontend.workspace = true
+nargo_cli.workspace = true
+nargo_toml.workspace = true
+nargo.workspace = true
+fm.workspace = true
+fs2.workspace = true
+
+# Formal Verification
+vir = {git = "https://github.com/Aristotelis2002/verus-lib", branch = "synced_main"}
+
+

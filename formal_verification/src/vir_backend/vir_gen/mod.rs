@@ -1,0 +1,198 @@
+pub mod attribute;
+pub mod expr_to_vir;
+pub mod function;
+pub mod globals;
+pub mod typed_attrs_to_vir;
+
+use function::build_funx;
+use noirc_errors::Location;
+use noirc_frontend::monomorphization::ast::{FuncId, Program};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
+use vir::{
+    ast::{Expr, Krate, KrateX, ModuleX, PathX},
+    def::Spanned,
+    messages::Span,
+};
+
+use crate::vir_backend::vir_gen::{
+    expr_to_vir::expression_location, function::build_funx_with_ready_annotations,
+    globals::build_global_const_x,
+};
+
+#[derive(Debug, Clone)]
+pub enum Attribute {
+    Ghost,
+    Ensures(Expr),
+    Requires(Expr),
+}
+
+pub fn encode_span_to_string(location: Location) -> String {
+    let stringified_span: String = format!("{}, {}", location.span.start(), location.span.end());
+    let stringified_file_id: String = format!("{}", location.file.as_usize());
+
+    format!("({}, {})", stringified_span, stringified_file_id)
+}
+
+pub fn build_span_no_id(debug_string: String, span: Option<Location>) -> Span {
+    build_span(0, debug_string, span)
+}
+
+pub fn build_span(id: u32, debug_string: String, span: Option<Location>) -> Span {
+    let encoded_span = span.map(encode_span_to_string).unwrap_or_default();
+    Span {
+        raw_span: Arc::new(()), // Currently unusable because of hard to resolve bug
+        id: id as u64,          // Monomorphized AST doesn't have ids
+        data: Vec::new(),
+        as_string: encoded_span + &debug_string, // It's used as backup if there is no other way to show where the error comes from.
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BuildingKrateError {
+    Error(String),
+}
+
+impl Display for BuildingKrateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuildingKrateError::Error(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+pub fn build_krate(program: Program) -> Result<Krate, BuildingKrateError> {
+    let mut vir = KrateX {
+        functions: Vec::new(),
+        reveal_groups: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
+        assoc_type_impls: Vec::new(),
+        modules: Vec::new(),
+        external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: vir::ast_util::get_path_as_rust_names_for_krate(&Arc::new(
+            vir::def::VERUSLIB.to_string(),
+        )),
+        arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+    };
+
+    // There are no modules in the Noir's monomorphized AST.
+    // Therefore we are creating a default module and all functions will be a part of it.
+    let module = Spanned::new(
+        build_span_no_id(String::from("module"), None),
+        ModuleX {
+            path: Arc::new(PathX {
+                krate: None,
+                segments: Arc::new(vec![Arc::new(String::from("Mon. AST"))]),
+            }),
+            reveals: None,
+        },
+    );
+
+    // Insert global constants as functions. This is how Verus processes constants
+    vir.functions.extend(program.globals.iter().map(
+        |(global_id, (name, ast_type, expression))| {
+            let global_const_x =
+                build_global_const_x(name, ast_type, expression, &module, &program.globals);
+            Spanned::new(
+                build_span(
+                    global_id.0,
+                    format!("Global const {} = {}", name, expression),
+                    expression_location(expression),
+                ),
+                global_const_x,
+            )
+        },
+    ));
+
+    for function in &program.functions {
+        let func_x = build_funx(function, &module, &program.globals)?;
+        let function = Spanned::new(
+            build_span(
+                function.id.0,
+                format!("Function({}) with name {}", function.id.0, function.name),
+                None,
+            ),
+            func_x,
+        );
+        vir.functions.push(function);
+    }
+
+    vir.modules.push(module);
+
+    Ok(Arc::new(vir))
+}
+
+/// Same as `build_krate` but expects the FV attributes
+/// to be already transformed into VIR form.
+pub fn build_krate_with_ready_annotations(
+    program: Program,
+    fv_annotations: Vec<(FuncId, Vec<Attribute>)>,
+) -> Result<Krate, BuildingKrateError> {
+    let mut vir = KrateX {
+        functions: Vec::new(),
+        reveal_groups: Vec::new(),
+        datatypes: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
+        assoc_type_impls: Vec::new(),
+        modules: Vec::new(),
+        external_fns: Vec::new(),
+        external_types: Vec::new(),
+        path_as_rust_names: vir::ast_util::get_path_as_rust_names_for_krate(&Arc::new(
+            vir::def::VERUSLIB.to_string(),
+        )),
+        arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+    };
+
+    // There are no modules in the Noir's monomorphized AST.
+    // Therefore we are creating a default module and all functions will be a part of it.
+    let module = Spanned::new(
+        build_span_no_id(String::from("module"), None),
+        ModuleX {
+            path: Arc::new(PathX {
+                krate: None,
+                segments: Arc::new(vec![Arc::new(String::from("Mon. AST"))]),
+            }),
+            reveals: None,
+        },
+    );
+
+    // Insert global constants as functions. This is how Verus processes constants
+    vir.functions.extend(program.globals.iter().map(
+        |(global_id, (name, ast_type, expression))| {
+            let global_const_x =
+                build_global_const_x(name, ast_type, expression, &module, &program.globals);
+            Spanned::new(
+                build_span(
+                    global_id.0,
+                    format!("Global const {} = {}", name, expression),
+                    expression_location(expression),
+                ),
+                global_const_x,
+            )
+        },
+    ));
+
+    let mut annotations_map: HashMap<FuncId, Vec<Attribute>> = fv_annotations.into_iter().collect();
+
+    for function in &program.functions {
+        let attrs = annotations_map.remove(&function.id).unwrap_or_else(Vec::new);
+        let func_x = build_funx_with_ready_annotations(function, &module, &program.globals, attrs)?;
+        let function = Spanned::new(
+            build_span(
+                function.id.0,
+                format!("Function({}) with name {}", function.id.0, function.name),
+                None,
+            ),
+            func_x,
+        );
+        vir.functions.push(function);
+    }
+
+    vir.modules.push(module);
+
+    Ok(Arc::new(vir))
+}
