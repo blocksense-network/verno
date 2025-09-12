@@ -2,3 +2,4 @@ target/
 **/Verifier.toml
 **/contract
 **/target
+default.nix
