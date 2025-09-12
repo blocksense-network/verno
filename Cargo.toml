@@ -39,6 +39,11 @@ vir = { git = "https://github.com/Aristotelis2002/verus-lib", branch = "synced_m
 # Utility crates
 iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "iter-extended" }
 
+# Build dependencies
+build-data = "0.3.3"
+assert_cmd = "2.0.14"
+predicates = "3.1.3"
+
 # Serde & JSON
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0"

@@ -19,5 +19,9 @@ fs2.workspace = true
 
 # Formal Verification
 vir = {git = "https://github.com/Aristotelis2002/verus-lib", branch = "synced_main"}
+[build-dependencies]
+build-data.workspace = true
 
-
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
