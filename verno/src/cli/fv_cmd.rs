@@ -26,10 +26,6 @@ pub struct FormalVerifyCommand {
     #[arg(long, hide = true)]
     pub show_vir: bool,
 
-    /// Use the new syntax for FV annotations
-    #[arg(long)]
-    pub new_syntax: bool,
-
     // Flags which will be propagated to the Venir binary
     #[clap(last = true)]
     venir_flags: Vec<String>,
