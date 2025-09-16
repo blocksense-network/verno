@@ -30,10 +30,7 @@ fn main() -> Result<(), String> {
     println!("cargo:rerun-if-changed=tests");
     // TODO: Running the tests changes the timestamps on test_programs files (file lock?).
     // That has the knock-on effect of then needing to rebuild the tests after running the tests.
-    println!(
-        "cargo:rerun-if-changed={}",
-        test_dir.as_os_str().to_str().unwrap()
-    );
+    println!("cargo:rerun-if-changed={}", test_dir.as_os_str().to_str().unwrap());
 
     generate_formal_verify_success_tests(&mut test_file, &test_dir);
     generate_formal_verify_failure_tests(&mut test_file, &test_dir);
@@ -46,10 +43,8 @@ fn read_test_cases(
     test_sub_dir: &str,
 ) -> impl Iterator<Item = (String, PathBuf)> {
     let test_data_dir = test_data_dir.join(test_sub_dir);
-    let test_case_dirs = fs::read_dir(test_data_dir)
-        .unwrap()
-        .flatten()
-        .filter(|c| c.path().is_dir());
+    let test_case_dirs =
+        fs::read_dir(test_data_dir).unwrap().flatten().filter(|c| c.path().is_dir());
 
     test_case_dirs.into_iter().filter_map(|dir| {
         // When switching git branches we might end up with non-empty directories that have a `target`
@@ -59,10 +54,8 @@ fn read_test_cases(
             return None;
         }
 
-        let test_name = dir
-            .file_name()
-            .into_string()
-            .expect("Directory can't be converted to string");
+        let test_name =
+            dir.file_name().into_string().expect("Directory can't be converted to string");
         if test_name.contains('-') {
             panic!(
                 "Invalid test directory: {test_name}. Cannot include `-`, please convert to `_`"

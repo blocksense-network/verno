@@ -200,7 +200,10 @@ fn try_fmap<A, B, E>(expr: ExprF<A>, cata_fn: &impl Fn(A) -> Result<B, E>) -> Re
     })
 }
 
-fn try_fmap_mut<A, B, E>(expr: ExprF<A>, cata_fn: &mut impl FnMut(A) -> Result<B, E>) -> Result<ExprF<B>, E> {
+fn try_fmap_mut<A, B, E>(
+    expr: ExprF<A>,
+    cata_fn: &mut impl FnMut(A) -> Result<B, E>,
+) -> Result<ExprF<B>, E> {
     Ok(match expr {
         ExprF::BinaryOp { op, expr_left, expr_right } => {
             ExprF::BinaryOp { op, expr_left: cata_fn(expr_left)?, expr_right: cata_fn(expr_right)? }
@@ -215,7 +218,7 @@ fn try_fmap_mut<A, B, E>(expr: ExprF<A>, cata_fn: &mut impl FnMut(A) -> Result<B
             ExprF::FnCall { name, args: processed_args }
         }
         ExprF::Index { expr, index } => {
-            ExprF::Index {  index: cata_fn(index)? , expr: cata_fn(expr)? }
+            ExprF::Index { index: cata_fn(index)?, expr: cata_fn(expr)? }
         }
         ExprF::TupleAccess { expr, index } => ExprF::TupleAccess { expr: cata_fn(expr)?, index },
         ExprF::StructureAccess { expr, field } => {

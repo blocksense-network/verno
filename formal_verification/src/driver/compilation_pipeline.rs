@@ -6,16 +6,14 @@ use crate::annotations::typing::type_infer::{OptionalType, TypeInferenceError, t
 use crate::annotations::{State, parsing::parse_attribute};
 use crate::vir_backend::create_verus_vir_with_ready_annotations;
 use crate::vir_backend::vir_gen::expr_to_vir::std_functions::OLD;
-use crate::vir_backend::vir_gen::{Attribute, BuildingKrateError};
 use crate::vir_backend::vir_gen::typed_attrs_to_vir::convert_typed_attribute_to_vir_attribute;
+use crate::vir_backend::vir_gen::{Attribute, BuildingKrateError};
 use fm::FileId;
 use iter_extended::vecmap;
 use noirc_driver::{CompilationResult, CompileError, CompileOptions, check_crate};
 use noirc_errors::Location;
 use noirc_errors::{CustomDiagnostic, Span};
-use noirc_evaluator::{
-    errors::{RuntimeError, SsaReport},
-};
+use noirc_evaluator::errors::{RuntimeError, SsaReport};
 use noirc_frontend::Kind;
 use noirc_frontend::graph::CrateGraph;
 use noirc_frontend::hir::def_map::{
@@ -81,10 +79,9 @@ fn modified_compile_main(
             CompilationErrorBundle::TypeError(type_check_error) => {
                 vec![CustomDiagnostic::from(&type_check_error)]
             }
-            CompilationErrorBundle::ParserErrors(parser_errors) => parser_errors
-                .into_iter()
-                .map(CustomDiagnostic::from)
-                .collect(),
+            CompilationErrorBundle::ParserErrors(parser_errors) => {
+                parser_errors.into_iter().map(CustomDiagnostic::from).collect()
+            }
             CompilationErrorBundle::ResolverError(resolver_error) => {
                 vec![CustomDiagnostic::from(&resolver_error)]
             }
@@ -217,19 +214,10 @@ fn modified_monomorphize(
         .collect();
 
     // Clone because of the borrow checker
-    let globals = monomorphizer
-        .finished_globals
-        .clone()
-        .into_iter()
-        .collect::<BTreeMap<_, _>>();
+    let globals = monomorphizer.finished_globals.clone().into_iter().collect::<BTreeMap<_, _>>();
 
-    let min_available_id: u32 = monomorphizer
-        .locals
-        .values()
-        .map(|LocalId(id)| *id)
-        .max()
-        .unwrap_or_default()
-        + 1;
+    let min_available_id: u32 =
+        monomorphizer.locals.values().map(|LocalId(id)| *id).max().unwrap_or_default() + 1;
     let min_available_id = Rc::new(RefCell::new(min_available_id));
 
     let functions_to_process: Vec<(FuncId, node_interner::FuncId)> = monomorphizer
@@ -238,9 +226,7 @@ fn modified_monomorphize(
         .rev()
         .copied()
         .filter_map(|new_func_id| {
-            new_ids_to_old_ids
-                .get(&new_func_id)
-                .map(|old_id| (new_func_id, *old_id))
+            new_ids_to_old_ids.get(&new_func_id).map(|old_id| (new_func_id, *old_id))
         })
         .collect();
 
@@ -348,10 +334,8 @@ fn modified_monomorphize(
                 min_local_id: min_available_id.clone(),
             };
 
-            processed_attributes.push(convert_typed_attribute_to_vir_attribute(
-                typed_attribute,
-                &final_state,
-            ));
+            processed_attributes
+                .push(convert_typed_attribute_to_vir_attribute(typed_attribute, &final_state));
         }
 
         fv_annotations.push((new_func_id, processed_attributes));
@@ -523,9 +507,7 @@ fn monomorphize_one_function(
         noirc_frontend::Type::Unit,
     );
 
-    let mut typ_bindings = noirc_frontend::Type::Unit
-        .instantiate(&monomorphizer.interner)
-        .1;
+    let mut typ_bindings = noirc_frontend::Type::Unit.instantiate(&monomorphizer.interner).1;
 
     // Bind generic types to the type used in the function call
     monomorphizer
@@ -559,9 +541,7 @@ fn monomorphize_one_function(
             );
         });
 
-    monomorphizer
-        .interner
-        .store_instantiation_bindings(pseudo_call_expr_id, typ_bindings);
+    monomorphizer.interner.store_instantiation_bindings(pseudo_call_expr_id, typ_bindings);
 
     // NOTE: `queue_function` was made public by us
     monomorphizer.queue_function(
@@ -697,10 +677,8 @@ fn update_globals_if_needed(
             .get_all_globals()
             .iter()
             .map(|global_info| {
-                let module_id = ModuleId {
-                    krate: global_info.crate_id,
-                    local_id: global_info.local_id,
-                };
+                let module_id =
+                    ModuleId { krate: global_info.crate_id, local_id: global_info.local_id };
 
                 let mut module_path = fully_qualified_module_path(
                     def_maps,

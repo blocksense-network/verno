@@ -5,7 +5,7 @@ use formal_verification::{
 use nargo::{ops::report_errors, package::CrateName, prepare_package, workspace::Workspace};
 use nargo_cli::{cli::compile_cmd::parse_workspace, errors::CliError};
 use nargo_toml::PackageSelection;
-use noirc_driver::{link_to_debug_crate, CompileOptions};
+use noirc_driver::{CompileOptions, link_to_debug_crate};
 use noirc_frontend::debug::DebugInstrumenter;
 use vir::ast::Krate;
 
@@ -50,15 +50,10 @@ impl PackageOptions {
     /// * all packages if `workspace` is `true`
     /// * otherwise the default package
     pub fn package_selection(&self) -> PackageSelection {
-        let default_selection = if self.workspace {
-            PackageSelection::All
-        } else {
-            PackageSelection::DefaultOrAll
-        };
+        let default_selection =
+            if self.workspace { PackageSelection::All } else { PackageSelection::DefaultOrAll };
 
-        self.package
-            .clone()
-            .map_or(default_selection, PackageSelection::Selected)
+        self.package.clone().map_or(default_selection, PackageSelection::Selected)
     }
 }
 

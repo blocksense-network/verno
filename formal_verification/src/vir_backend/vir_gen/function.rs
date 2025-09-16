@@ -1,22 +1,18 @@
 use crate::vir_backend::vir_gen::build_span_no_id;
 use crate::vir_backend::vir_gen::expr_to_vir::types::ast_type_to_vir_type;
 
+use super::BuildingKrateError;
 use super::expr_to_vir::expr::func_body_to_vir_expr;
 use super::expr_to_vir::params::ast_param_to_vir_param;
-use super::{
-    BuildingKrateError,
-};
 use crate::vir_backend::vir_gen::Attribute;
 use noirc_errors::Location;
-use noirc_frontend::monomorphization::ast::{
-    Expression, Function, GlobalId, Type,
-};
+use noirc_frontend::monomorphization::ast::{Expression, Function, GlobalId, Type};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use vir::ast::{
-    BodyVisibility, Fun, FunX, FunctionAttrs, FunctionAttrsX, FunctionKind, FunctionX,
-    ItemKind, Mode, Module, Opaqueness, Param, ParamX, Params, PathX, VarIdent,
-    VarIdentDisambiguate, Visibility,
+    BodyVisibility, Fun, FunX, FunctionAttrs, FunctionAttrsX, FunctionKind, FunctionX, ItemKind,
+    Mode, Module, Opaqueness, Param, ParamX, Params, PathX, VarIdent, VarIdentDisambiguate,
+    Visibility,
 };
 use vir::def::Spanned;
 

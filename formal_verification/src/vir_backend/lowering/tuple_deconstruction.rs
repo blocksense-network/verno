@@ -1,6 +1,4 @@
-use noirc_frontend::monomorphization::ast::{
-    Expression, Function, Ident, Let, Program, Type,
-};
+use noirc_frontend::monomorphization::ast::{Expression, Function, Ident, Let, Program, Type};
 
 pub fn fix_tuple_deconstruction_pass(program: &mut Program) {
     program.functions.iter_mut().for_each(|function| fix_tuple_deconstruction(function));
@@ -52,7 +50,7 @@ fn fix_tuple_deconstruction_expression(expression: &mut Expression) {
 
                 if let Some(exprs_len) = let_exprs_for_deconstruct_tuple {
                     for expr in expressions[1..=exprs_len].iter_mut() {
-                        assert!(matches!(expr, Expression::Let(..)), 
+                        assert!(matches!(expr, Expression::Let(..)),
                             "Expected to have a follow up auto generated let expressions after tuple deconstruct assignment");
                         if let Expression::Let(let_expr) = expr {
                             fix_rhs_tuple_indexing(let_expr);

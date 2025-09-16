@@ -30,23 +30,19 @@ pub(crate) enum CompilationErrorBundle {
 #[derive(Error, Debug, Clone)]
 pub(crate) enum FvMonomorphizationError {
     #[error("Non-ghost function {func_name} was called in FV annotation")]
-    ExecInSpecError {
-        func_name: String,
-        location: Location,
-    },
+    ExecInSpecError { func_name: String, location: Location },
 }
 
 impl From<FvMonomorphizationError> for CustomDiagnostic {
     fn from(value: FvMonomorphizationError) -> Self {
         match value {
-            FvMonomorphizationError::ExecInSpecError {
-                func_name,
-                location,
-            } => CustomDiagnostic::simple_error(
-                format!("Non-ghost function {func_name} was called in FV annotation"),
-                String::new(),
-                location,
-            ),
+            FvMonomorphizationError::ExecInSpecError { func_name, location } => {
+                CustomDiagnostic::simple_error(
+                    format!("Non-ghost function {func_name} was called in FV annotation"),
+                    String::new(),
+                    location,
+                )
+            }
         }
     }
 }

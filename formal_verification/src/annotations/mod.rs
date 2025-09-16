@@ -1,14 +1,14 @@
-use noirc_errors::Location;
-use noirc_frontend::monomorphization::ast as mast;
-use std::{cell::RefCell, collections::BTreeMap, fmt::Debug, rc::Rc};
 use crate::annotations::typing::type_infer::OptionalType;
 use ast::{OffsetExpr, SpannedExpr, cata};
+use noirc_errors::Location;
+use noirc_frontend::monomorphization::ast as mast;
 use parsing::build_location;
+use std::{cell::RefCell, collections::BTreeMap, fmt::Debug, rc::Rc};
 
 pub mod ast;
 pub mod lowering;
-pub mod typing;
 pub mod parsing;
+pub mod typing;
 
 #[derive(Debug)]
 pub struct State<'a> {

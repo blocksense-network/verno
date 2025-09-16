@@ -1,6 +1,6 @@
-pub mod venir_communication;
-pub mod driver;
 pub mod annotations;
+pub mod driver;
+pub mod venir_communication;
 pub mod vir_backend;
 
 /// This is the variable name which we assign to the special variable named "result".

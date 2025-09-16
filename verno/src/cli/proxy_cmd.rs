@@ -1,8 +1,6 @@
 use std::env;
 use std::ffi::OsString;
-use std::process::{exit, Command};
-
-
+use std::process::{Command, exit};
 
 fn find_nargo_binary() -> Option<OsString> {
     // 1. Check NARGO_PATH environment variable
@@ -38,10 +36,8 @@ fn find_nargo_binary() -> Option<OsString> {
 
 pub fn proxy_to_nargo(args: &Vec<OsString>) {
     if let Some(nargo_binary) = find_nargo_binary() {
-        let status = Command::new(nargo_binary)
-            .args(args)
-            .status()
-            .expect("Failed to execute nargo.");
+        let status =
+            Command::new(nargo_binary).args(args).status().expect("Failed to execute nargo.");
 
         exit(status.code().unwrap_or(1));
     } else {
@@ -49,7 +45,9 @@ pub fn proxy_to_nargo(args: &Vec<OsString>) {
         eprintln!(
             "To run normal Noir commands, you need to have 'nargo' installed and in your PATH."
         );
-        eprintln!("Alternatively, you can set the NARGO_PATH environment variable to the full path of the nargo binary.");
+        eprintln!(
+            "Alternatively, you can set the NARGO_PATH environment variable to the full path of the nargo binary."
+        );
         exit(1);
     }
 }

@@ -22,7 +22,11 @@ use errors::{
     Error, ParserError, ParserErrorKind, ParserErrorWithLocation, build_error, expect, map_nom_err,
 };
 
-use crate::annotations::{Attribute, ast::{BinaryOp, ExprF, Identifier, Literal, OffsetExpr, Quantifier, UnaryOp, Variable}, span_expr};
+use crate::annotations::{
+    Attribute,
+    ast::{BinaryOp, ExprF, Identifier, Literal, OffsetExpr, Quantifier, UnaryOp, Variable},
+    span_expr,
+};
 
 // use crate::{
 //     Attribute,

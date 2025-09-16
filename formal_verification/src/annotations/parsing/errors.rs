@@ -1,7 +1,7 @@
 use noirc_errors::{CustomDiagnostic, Location};
 use nom::{
-    error::{ContextError, ErrorKind, ParseError},
     Err as NomErr, IResult, Parser,
+    error::{ContextError, ErrorKind, ParseError},
 };
 use std::fmt::Debug;
 
@@ -57,10 +57,7 @@ pub fn input_to_offset(i: Input) -> u32 {
 /// Builds and returns our custom Error struct directly.
 pub fn build_error(input: Input, kind: ParserErrorKind) -> Error {
     Error {
-        parser_errors: vec![ParserError {
-            offset: input_to_offset(input),
-            kind,
-        }],
+        parser_errors: vec![ParserError { offset: input_to_offset(input), kind }],
         contexts: vec![],
     }
 }
@@ -127,10 +124,7 @@ impl<'a> ParseError<Input<'a>> for Error {
             offset: input_to_offset(input),
             kind: ParserErrorKind::Message(format!("nom primitive failed: {:?}", kind)),
         };
-        Error {
-            parser_errors: vec![err],
-            contexts: vec![],
-        }
+        Error { parser_errors: vec![err], contexts: vec![] }
     }
 
     fn append(_input: Input<'a>, _kind: ErrorKind, other: Self) -> Self {

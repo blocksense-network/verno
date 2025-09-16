@@ -28,10 +28,7 @@ pub fn inline_global_consts(
 
                 if is_parameter {
                     // It's a parameter. Leave it as is and we're done with this variable.
-                    return Ok(SpannedExpr {
-                        ann: loc,
-                        expr: Box::new(ExprF::Variable(variable)),
-                    });
+                    return Ok(SpannedExpr { ann: loc, expr: Box::new(ExprF::Variable(variable)) });
                 }
 
                 // --- Guard 2: Try to resolve as a global constant ---
@@ -45,10 +42,7 @@ pub fn inline_global_consts(
                         }
                         GlobalValue::Resolved(value) => {
                             let global_const_as_exprf = resolved_value_to_exprf(value, loc)?;
-                            Ok(SpannedExpr {
-                                ann: loc,
-                                expr: Box::new(global_const_as_exprf),
-                            })
+                            Ok(SpannedExpr { ann: loc, expr: Box::new(global_const_as_exprf) })
                         }
                     };
                 }
@@ -65,16 +59,10 @@ pub fn inline_global_consts(
                 // If none of the guards above returned, the variable must be a local identifier
                 // that is not a parameter (e.g., `result`, quantifier, or undeclared variable).
                 // We leave it as is for a later compiler stage to handle.
-                Ok(SpannedExpr {
-                    ann: loc,
-                    expr: Box::new(ExprF::Variable(variable)),
-                })
+                Ok(SpannedExpr { ann: loc, expr: Box::new(ExprF::Variable(variable)) })
             }
             // For any other expression type, just reconstruct it.
-            _ => Ok(SpannedExpr {
-                ann: loc,
-                expr: Box::new(exprf),
-            }),
+            _ => Ok(SpannedExpr { ann: loc, expr: Box::new(exprf) }),
         }
     })
 }

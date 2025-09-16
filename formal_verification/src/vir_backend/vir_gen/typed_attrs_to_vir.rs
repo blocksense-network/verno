@@ -1,9 +1,23 @@
 use std::sync::Arc;
 
-use crate::{FUNC_RETURN_VAR_NAME, annotations::{
-    State,
-    ast::{BinaryOp, ExprF, Quantifier, SpannedTypedExpr, Variable, cata},
-}, vir_backend::vir_gen::{Attribute, build_span, build_span_no_id, expr_to_vir::{expr::{function_name_to_vir_fun, numeric_const_to_vir_exprx, wrap_with_field_modulo}, std_functions::handle_fv_std_call_in_annotations, types::{ast_const_to_vir_type_const, ast_type_to_vir_type, get_bit_not_bitwidth, is_type_field}}}};
+use crate::{
+    FUNC_RETURN_VAR_NAME,
+    annotations::{
+        State,
+        ast::{BinaryOp, ExprF, Quantifier, SpannedTypedExpr, Variable, cata},
+    },
+    vir_backend::vir_gen::{
+        Attribute, build_span, build_span_no_id,
+        expr_to_vir::{
+            expr::{function_name_to_vir_fun, numeric_const_to_vir_exprx, wrap_with_field_modulo},
+            std_functions::handle_fv_std_call_in_annotations,
+            types::{
+                ast_const_to_vir_type_const, ast_type_to_vir_type, get_bit_not_bitwidth,
+                is_type_field,
+            },
+        },
+    },
+};
 use vir::{
     ast::{
         AirQuant, BinaryOp as VirBinaryOp, BinderX, BitwiseOp, Dt, FieldOpr, FunX, ImplPath,
@@ -128,9 +142,7 @@ pub(crate) fn ann_expr_to_vir_expr(ann_expr: SpannedTypedExpr, state: &State) ->
                 SpannedTyped::new(&span, &ast_type_to_vir_type(&typ), exprx)
             }
             ExprF::FnCall { name, args } => {
-                if let Some(expr) =
-                    handle_fv_std_call_in_annotations(&name, &args, loc, &typ)
-                {
+                if let Some(expr) = handle_fv_std_call_in_annotations(&name, &args, loc, &typ) {
                     return expr;
                 }
 

@@ -1,4 +1,7 @@
-use crate::cli::{cli_components::{NargoConfig, with_workspace}, proxy_cmd::proxy_to_nargo};
+use crate::cli::{
+    cli_components::{NargoConfig, with_workspace},
+    proxy_cmd::proxy_to_nargo,
+};
 use clap::{Parser, Subcommand};
 use nargo_cli::errors::CliError;
 use std::ffi::OsString;

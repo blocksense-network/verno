@@ -5,7 +5,7 @@ use std::{
 
 use fm::{FileId, FileManager, FileMap};
 use nargo_cli::errors::CliError;
-use noirc_errors::{reporter::ReportedErrors, CustomDiagnostic, DiagnosticKind, Location, Span};
+use noirc_errors::{CustomDiagnostic, DiagnosticKind, Location, Span, reporter::ReportedErrors};
 use serde::Deserialize;
 use vir::ast::Krate;
 
@@ -31,14 +31,12 @@ pub fn venir_verify(
         ))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(serialized_vir_krate.as_bytes())
-            .map_err(|e| {
-                CliError::Generic(format!(
-                    "Failed to write to Venir stdin with the following error message\n{}",
-                    e.to_string()
-                ))
-            })?;
+        stdin.write_all(serialized_vir_krate.as_bytes()).map_err(|e| {
+            CliError::Generic(format!(
+                "Failed to write to Venir stdin with the following error message\n{}",
+                e.to_string()
+            ))
+        })?;
     }
 
     let output = child.wait_with_output().map_err(|e| {
@@ -82,11 +80,8 @@ pub fn venir_verify(
         .collect();
 
     // Sort errors by span.
-    verification_diagnostics.sort_by_key(|diag| {
-        diag.secondaries
-            .first()
-            .map(|label| label.location.span.start())
-    });
+    verification_diagnostics
+        .sort_by_key(|diag| diag.secondaries.first().map(|label| label.location.span.start()));
 
     // Report errors from the verification process.
     let reported_errors: ReportedErrors = noirc_errors::reporter::report_all(
@@ -219,10 +214,7 @@ fn smt_output_to_diagnostic(
 /// Therefore when we get the file id from the Venir error span we have to search
 /// the file map and return the matching `FileId`.
 fn get_file_id_via_usize(file_map: &FileMap, file_id_as_usize: usize) -> Option<FileId> {
-    file_map
-        .all_file_ids()
-        .find(|file_id| file_id.as_usize() == file_id_as_usize)
-        .cloned()
+    file_map.all_file_ids().find(|file_id| file_id.as_usize() == file_id_as_usize).cloned()
 }
 
 fn convert_span(input: &str) -> Option<(u32, u32, usize)> {

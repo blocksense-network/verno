@@ -1,26 +1,27 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::{FUNC_RETURN_VAR_NAME, vir_backend::vir_gen::{
-    build_span, build_span_no_id,
-    expr_to_vir::{
-        expression_location,
-        std_functions::handle_fv_std_call,
-        types::{
-            ast_const_to_vir_type_const, ast_type_to_vir_type, build_tuple_type,
-            get_binary_op_type, get_bit_not_bitwidth, get_collection_type_len, is_inner_type_array,
-            is_type_field, make_unit_vir_type,
+use crate::{
+    FUNC_RETURN_VAR_NAME,
+    vir_backend::vir_gen::{
+        build_span, build_span_no_id,
+        expr_to_vir::{
+            expression_location,
+            std_functions::handle_fv_std_call,
+            types::{
+                ast_const_to_vir_type_const, ast_type_to_vir_type, build_tuple_type,
+                get_binary_op_type, get_bit_not_bitwidth, get_collection_type_len,
+                is_inner_type_array, is_type_field, make_unit_vir_type,
+            },
         },
     },
-}};
+};
 use acvm::{AcirField, FieldElement};
 use noirc_errors::Location;
 use noirc_frontend::{
     ast::{BinaryOpKind, UnaryOp},
-    monomorphization::{
-        ast::{
-            Assign, Binary, Call, Cast, Definition, Expression, Function, GlobalId, Ident, If,
-            Index, LValue, Literal, Match, Type, Unary, While,
-        },
+    monomorphization::ast::{
+        Assign, Binary, Call, Cast, Definition, Expression, Function, GlobalId, Ident, If, Index,
+        LValue, Literal, Match, Type, Unary, While,
     },
     shared::Signedness,
     signed_field::SignedField,

@@ -1,12 +1,15 @@
 use std::{convert::identity, fmt::Display, ops::AddAssign};
 
-use crate::{FUNC_RETURN_VAR_NAME, annotations::{
-    MonomorphizationRequest, State,
-    ast::{
-        AnnExpr, BinaryOp, ExprF, Literal, SpannedExpr, SpannedTypedExpr, UnaryOp, Variable, cata,
-        try_cata, try_contextual_cata,
+use crate::{
+    FUNC_RETURN_VAR_NAME,
+    annotations::{
+        MonomorphizationRequest, State,
+        ast::{
+            AnnExpr, BinaryOp, ExprF, Literal, SpannedExpr, SpannedTypedExpr, UnaryOp, Variable,
+            cata, try_cata, try_contextual_cata,
+        },
     },
-}};
+};
 use noirc_errors::Location;
 use noirc_frontend::{
     ast::IntegerBitSize,
@@ -850,13 +853,11 @@ pub fn type_infer(
                     if exprs.is_empty() {
                         // TODO(totel): better error?
                         return Err(TypeInferenceError::NoirTypeError(
-                            TypeCheckError::ResolverError(
-                                ResolverError::Expected { 
-                                    location, 
-                                    expected: "non empty array literal",
-                                     got: "empty array literal"
-                                }
-                            ),
+                            TypeCheckError::ResolverError(ResolverError::Expected {
+                                location,
+                                expected: "non empty array literal",
+                                got: "empty array literal",
+                            }),
                         ));
                     }
 

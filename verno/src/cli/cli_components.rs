@@ -2,7 +2,7 @@ use clap::Args;
 use nargo::workspace::Workspace;
 use nargo_cli::errors::CliError;
 use nargo_toml::{
-    get_package_manifest, resolve_workspace_from_toml, ManifestError, PackageSelection,
+    ManifestError, PackageSelection, get_package_manifest, resolve_workspace_from_toml,
 };
 use std::{
     fs::File,
@@ -55,10 +55,7 @@ where
     let selection = match cmd.package_selection() {
         PackageSelection::DefaultOrAll if workspace_dir != package_dir => {
             let package = read_workspace(&package_dir, PackageSelection::DefaultOrAll)?;
-            let package = package
-                .into_iter()
-                .next()
-                .expect("there should be exactly 1 package");
+            let package = package.into_iter().next().expect("there should be exactly 1 package");
             PackageSelection::Selected(package.name.clone())
         }
         other => other,
@@ -79,9 +76,7 @@ where
 /// Parses a path and turns it into an absolute one by joining to the current directory.
 fn parse_path(path: &str) -> Result<PathBuf, String> {
     use fm::NormalizePath;
-    let mut path: PathBuf = path
-        .parse()
-        .map_err(|e| format!("failed to parse path: {e}"))?;
+    let mut path: PathBuf = path.parse().map_err(|e| format!("failed to parse path: {e}"))?;
     if !path.is_absolute() {
         path = std::env::current_dir().unwrap().join(path).normalize();
     }
@@ -96,8 +91,7 @@ fn read_workspace(
     let toml_path = get_package_manifest(program_dir)?;
 
     let workspace = resolve_workspace_from_toml(
-        &toml_path,
-        selection,
+        &toml_path, selection,
         // If we set the required env variables we could have an extra check for version compatibility.
         // For more information check file `tooling/nargo_cli/src/cli/mod.rs` in the Noir repo. (09.09.2025)
         None,
