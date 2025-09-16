@@ -147,7 +147,6 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
         Expression::Clone(expression) => visit_expr(expression, constants, let_local_id),
         Expression::Drop(expression) => visit_expr(expression, constants, let_local_id),
         Expression::Break | Expression::Continue => (),
-        Expression::Quant(..) => (), // Quantifiers can't have `for` loops in them
         _ => (),
     }
 }
@@ -303,8 +302,7 @@ fn collect_constant_from_expression(
         | Expression::While(_)
         | Expression::Constrain(..)
         | Expression::Break
-        | Expression::Continue
-        | Expression::Quant(..) => None, // Those expressions can not return values therefore there are no constants to collect
+        | Expression::Continue => None, // Those expressions can not return values therefore there are no constants to collect
     }
 }
 

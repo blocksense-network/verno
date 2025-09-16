@@ -82,7 +82,6 @@ pub(crate) fn run(args: FormalVerifyCommand, workspace: Workspace) -> Result<(),
         link_to_debug_crate(&mut context, crate_id);
         context.debug_instrumenter = DebugInstrumenter::default();
         context.package_build_path = workspace.package_build_path(package);
-        context.perform_formal_verification = true;
 
         let krate: Krate = report_errors(
             compile_and_build_vir_krate(&mut context, crate_id, &args.compile_options),

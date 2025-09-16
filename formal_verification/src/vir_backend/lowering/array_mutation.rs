@@ -225,6 +225,10 @@ fn build_lvalue_string_recursive(lvalue: &LValue, result: &mut String) {
             // We ignore dereference operation
             build_lvalue_string_recursive(reference, result);
         }
+        LValue::Clone(lvalue) => {
+            // We ignore clone operation
+            build_lvalue_string_recursive(lvalue, result);
+        }
     }
 }
 
@@ -339,6 +343,10 @@ fn lvalue_to_expr(lvalue: &LValue) -> Expression {
             //TODO(totel): We are currently ignoring dereference operation
             lvalue_to_expr(reference)
         }
+        LValue::Clone(lvalue) => {
+            //TODO(totel): We are currently ignoring clone operation
+            lvalue_to_expr(lvalue)
+        }
     }
 }
 
@@ -385,6 +393,7 @@ fn remove_outer_lvalue(lvalue: LValue) -> LValue {
         LValue::Index { array, .. } => *array,
         LValue::MemberAccess { object, .. } => *object,
         LValue::Dereference { reference, .. } => *reference,
+        LValue::Clone(lvalue) => *lvalue,
     }
 }
 
@@ -403,6 +412,7 @@ fn is_lvalue_valid(lvalue: &LValue, is_inside_index: bool, is_inside_member_acce
         LValue::Dereference { reference, .. } => {
             is_lvalue_valid(&reference, is_inside_index, is_inside_member_access)
         }
+        LValue::Clone(_) => true,
     }
 }
 

@@ -85,7 +85,7 @@ pub fn get_bit_not_bitwidth(integer_type: &Type) -> Option<IntegerTypeBitwidth> 
 }
 
 pub fn get_binary_op_type(lhs_type: Typ, binary_op: &BinaryOpKind) -> Typ {
-    if binary_op.is_comparator() || binary_op.is_equality() || binary_op.is_implication() {
+    if binary_op.is_comparator() || binary_op.is_equality() {
         Arc::new(TypX::Bool)
     } else {
         lhs_type

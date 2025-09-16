@@ -106,7 +106,7 @@ fn resolved_value_to_exprf(
             let exprs = values
                 .iter()
                 .map(|val| {
-                    let exprf = resolved_value_to_exprf(val, location)?;
+                    let exprf = resolved_value_to_exprf(&val.borrow(), location)?;
                     Ok(SpannedExpr { ann: location, expr: Box::new(exprf) })
                 })
                 .collect::<Result<_, ResolverError>>()?;

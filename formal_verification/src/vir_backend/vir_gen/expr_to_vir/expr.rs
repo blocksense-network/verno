@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::vir_backend::vir_gen::{
+use crate::{FUNC_RETURN_VAR_NAME, vir_backend::vir_gen::{
     build_span, build_span_no_id,
     expr_to_vir::{
         expression_location,
@@ -11,13 +11,12 @@ use crate::vir_backend::vir_gen::{
             is_type_field, make_unit_vir_type,
         },
     },
-};
+}};
 use acvm::{AcirField, FieldElement};
 use noirc_errors::Location;
 use noirc_frontend::{
-    ast::{BinaryOpKind, QuantifierType, UnaryOp},
+    ast::{BinaryOpKind, UnaryOp},
     monomorphization::{
-        FUNC_RETURN_VAR_NAME,
         ast::{
             Assign, Binary, Call, Cast, Definition, Expression, Function, GlobalId, Ident, If,
             Index, LValue, Literal, Match, Type, Unary, While,
@@ -134,14 +133,6 @@ pub fn ast_expr_to_vir_expr(
         }
         Expression::Break => ast_break_to_vir_expr(),
         Expression::Continue => ast_continue_to_vir_expr(),
-        Expression::Quant(quantifier_type, idents, quantifier_body) => ast_quant_to_vir_expr(
-            quantifier_type,
-            idents,
-            quantifier_body,
-            expression_location(expr),
-            mode,
-            globals,
-        ),
     }
 }
 
@@ -723,60 +714,6 @@ fn ast_continue_to_vir_expr() -> Expr {
     )
 }
 
-fn ast_quant_to_vir_expr(
-    quantifier_type: &QuantifierType,
-    quantifier_indexes: &Vec<Ident>,
-    quantifier_body: &Expression,
-    quantifier_location: Option<Location>,
-    mode: Mode,
-    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
-) -> Expr {
-    let quantifier_vir_type = match quantifier_type {
-        QuantifierType::Forall => Quant { quant: AirQuant::Forall },
-        QuantifierType::Exists => Quant { quant: AirQuant::Exists },
-    };
-
-    let quantifier_vir_indexes: Vec<VarBinder<Typ>> = quantifier_indexes
-        .iter()
-        .map(|index_ident| {
-            Arc::new(VarBinderX {
-                name: VarIdent(
-                    Arc::new(index_ident.name.clone()),
-                    VarIdentDisambiguate::RustcId(
-                        ast_definition_to_id(&index_ident.definition)
-                            .expect("Quantifier indexes should have a local id")
-                            .try_into()
-                            .expect("Failed to convert u32 id to usize"),
-                    ),
-                ),
-                a: if let Type::Integer(Signedness::Unsigned, _) = index_ident.typ {
-                    Arc::new(TypX::Int(IntRange::Nat))
-                } else {
-                    Arc::new(TypX::Int(IntRange::Int))
-                },
-            })
-        })
-        .collect();
-
-    let quantifier_vir_body = SpannedTyped::new(
-        &build_span_no_id(
-            format!("Quantifier {} body", quantifier_type),
-            expression_location(quantifier_body),
-        ),
-        &Arc::new(TypX::Bool), // All quantifier bodies must be of type bool
-        ast_expr_to_vir_expr(quantifier_body, mode, globals).x.clone(),
-    );
-
-    let quantifier_vir_exprx =
-        ExprX::Quant(quantifier_vir_type, Arc::new(quantifier_vir_indexes), quantifier_vir_body);
-
-    SpannedTyped::new(
-        &build_span_no_id(format!("Quantifier {}", quantifier_type), quantifier_location),
-        &Arc::new(TypX::Bool),
-        quantifier_vir_exprx,
-    )
-}
-
 fn ast_index_to_vir_expr(
     index: &Index,
     mode: Mode,
@@ -983,8 +920,6 @@ fn binary_op_to_vir_binary_op(
             ),
             mode,
         ),
-
-        BinaryOpKind::Implication => BinaryOp::Implies,
     }
 }
 
@@ -1009,6 +944,7 @@ fn is_lvalue_mut(lvalue: &LValue) -> bool {
         LValue::Index { array, .. } => is_lvalue_mut(&array),
         LValue::MemberAccess { object, .. } => is_lvalue_mut(&object),
         LValue::Dereference { reference, .. } => is_lvalue_mut(&reference),
+        LValue::Clone(lvalue) => is_lvalue_mut(lvalue),
     }
 }
 
@@ -1018,6 +954,7 @@ pub fn get_lvalue_ident(lvalue: &LValue) -> &Ident {
         LValue::Index { array, .. } => get_lvalue_ident(&array),
         LValue::MemberAccess { object, .. } => get_lvalue_ident(&object),
         LValue::Dereference { reference, .. } => get_lvalue_ident(&reference),
+        LValue::Clone(lvalue) => get_lvalue_ident(lvalue),
     }
 }
 
@@ -1094,6 +1031,11 @@ fn ast_lvalue_to_vir_expr(lvalue: &LValue, location: Option<Location>, mode: Mod
             // We can still try to convert it as a regular lhs var and ignore the dereference
             ast_lvalue_to_vir_expr(&reference, location, mode)
         }
+        LValue::Clone(lvalue) => {
+            // TODO(totel): Investigate what `LValue::Clone` is and
+            // if we are converting it properly to VIR
+            ast_lvalue_to_vir_expr(lvalue, location, mode)
+        }
     }
 }
 
@@ -1106,6 +1048,7 @@ fn get_lvalue_type(lvalue: &LValue) -> &Type {
             object_type => object_type, //TODO(totel): This branch is perhaps unreachable?
         },
         LValue::Dereference { element_type, .. } => element_type,
+        LValue::Clone(lvalue) => get_lvalue_type(lvalue),
     }
 }
 

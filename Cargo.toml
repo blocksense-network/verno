@@ -20,7 +20,7 @@ console = { version = "0.16", features = ["std"] }
 fs2 = "0.4.3"
 
 # Noir compiler dependencies
-fm = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "fm" }
+fm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "fm" }
 noirc_errors = { git = "https://github.com/noir-lang/noir.git" }
 noirc_evaluator = { git = "https://github.com/noir-lang/noir.git" }
 noirc_driver = { git = "https://github.com/noir-lang/noir.git", package = "noirc_driver" }
@@ -31,13 +31,13 @@ nargo = { git = "https://github.com/noir-lang/noir.git", package = "nargo" }
 
 # ACVM & FV-related crates
 acvm = { git = "https://github.com/noir-lang/noir.git"}
-bn254_blackbox_solver = { version = "1.0.0-beta.7", git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "bn254_blackbox_solver", default-features = false }
+bn254_blackbox_solver = { version = "1.0.0-beta.7", git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "bn254_blackbox_solver", default-features = false }
 nom = "8.0"
 derive_more = { version = "2.0.1", features = ["deref", "from", "into", "debug"] }
 vir = { git = "https://github.com/Aristotelis2002/verus-lib", branch = "synced_main" }
 
 # Utility crates
-iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "iter-extended" }
+iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "iter-extended" }
 
 # Build dependencies
 build-data = "0.3.3"
@@ -56,15 +56,15 @@ num-traits = "0.2"
 thiserror = "1.0.21"
 
 [patch.'https://github.com/noir-lang/noir.git']
-noirc_driver = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "noirc_driver" }
-noirc_frontend = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "noirc_frontend" }
-nargo_cli = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "nargo_cli" }
-nargo_toml = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "nargo_toml" }
-nargo = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "nargo" }
-noirc_errors = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "noirc_errors" }
-noirc_evaluator = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "noirc_evaluator" }
-fm = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "fm" }
-acvm = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "acvm" }
-iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "feat/new-annotation-parser", package = "iter-extended" }
+noirc_driver = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_driver" }
+noirc_frontend = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_frontend" }
+nargo_cli = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo_cli" }
+nargo_toml = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo_toml" }
+nargo = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo" }
+noirc_errors = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_errors" }
+noirc_evaluator = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_evaluator" }
+fm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "fm" }
+acvm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "acvm" }
+iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "iter-extended" }
 
 [workspace.lints]

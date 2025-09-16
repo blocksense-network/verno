@@ -74,7 +74,6 @@ pub fn expression_location(expr: &Expression) -> Option<Location> {
         Expression::Clone(expr) => expression_location(expr),
         Expression::Drop(expr) => expression_location(expr),
         Expression::Break | Expression::Continue => None,
-        Expression::Quant(_, _, expr) => expression_location(expr),
     }
 }
 
@@ -91,6 +90,7 @@ fn lvalue_location(lvalue: &LValue) -> Option<Location> {
         LValue::Index { location, .. } => Some(*location),
         LValue::MemberAccess { object, .. } => lvalue_location(object),
         LValue::Dereference { reference, .. } => lvalue_location(reference),
+        LValue::Clone(lvalue) => lvalue_location(lvalue),
     }
 }
 

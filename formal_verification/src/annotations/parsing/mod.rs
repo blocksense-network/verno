@@ -967,7 +967,6 @@ pub mod tests {
                 unconstrained: false,
                 inline_type: InlineType::Inline,
                 func_sig: (vec![], None),
-                formal_verification_attributes: vec![],
             })),
             global_constants: Box::leak(Box::new(vec![].into_iter().collect())),
             functions: Box::leak(Box::new(
@@ -986,7 +985,6 @@ pub mod tests {
                         unconstrained: false,
                         inline_type: InlineType::Inline,
                         func_sig: (vec![], None),
-                        formal_verification_attributes: vec![],
                     },
                 )]
                 .into_iter()

@@ -4,17 +4,17 @@ use crate::annotations::lowering::inline_globals::inline_global_consts;
 use crate::annotations::typing::type_conversion::convert_mast_to_noir_type;
 use crate::annotations::typing::type_infer::{OptionalType, TypeInferenceError, type_infer};
 use crate::annotations::{State, parsing::parse_attribute};
+use crate::vir_backend::create_verus_vir_with_ready_annotations;
+use crate::vir_backend::vir_gen::expr_to_vir::std_functions::OLD;
+use crate::vir_backend::vir_gen::{Attribute, BuildingKrateError};
 use crate::vir_backend::vir_gen::typed_attrs_to_vir::convert_typed_attribute_to_vir_attribute;
 use fm::FileId;
 use iter_extended::vecmap;
 use noirc_driver::{CompilationResult, CompileError, CompileOptions, check_crate};
 use noirc_errors::Location;
 use noirc_errors::{CustomDiagnostic, Span};
-use noirc_evaluator::vir::vir_gen::Attribute;
-use noirc_evaluator::vir::vir_gen::expr_to_vir::std_functions::OLD;
 use noirc_evaluator::{
     errors::{RuntimeError, SsaReport},
-    vir::{create_verus_vir_with_ready_annotations, vir_gen::BuildingKrateError},
 };
 use noirc_frontend::Kind;
 use noirc_frontend::graph::CrateGraph;
@@ -172,8 +172,8 @@ fn modified_monomorphize(
     def_maps: &DefMaps,
 ) -> Result<(Program, Vec<(FuncId, Vec<Attribute>)>), MonomorphizationErrorBundle> {
     let debug_type_tracker = DebugTypeTracker::build_from_debug_instrumenter(debug_instrumenter);
-    // NOTE: Monomorphizer is a `pub(crate)` struct which we changed to pub
-    let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker);
+    // NOTE: We are always passing `false` to the `force_unconstrained` argument
+    let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker, false);
     monomorphizer.in_unconstrained_function = force_unconstrained;
     let function_sig = monomorphizer
         .compile_main(main)

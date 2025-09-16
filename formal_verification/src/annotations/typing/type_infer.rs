@@ -1,17 +1,17 @@
 use std::{convert::identity, fmt::Display, ops::AddAssign};
 
-use crate::annotations::{
+use crate::{FUNC_RETURN_VAR_NAME, annotations::{
     MonomorphizationRequest, State,
     ast::{
         AnnExpr, BinaryOp, ExprF, Literal, SpannedExpr, SpannedTypedExpr, UnaryOp, Variable, cata,
         try_cata, try_contextual_cata,
     },
-};
+}};
 use noirc_errors::Location;
 use noirc_frontend::{
     ast::IntegerBitSize,
     hir::{resolution::errors::ResolverError, type_check::TypeCheckError},
-    monomorphization::{FUNC_RETURN_VAR_NAME, ast::Type as NoirType},
+    monomorphization::ast::Type as NoirType,
     shared::Signedness,
 };
 use num_bigint::{BigInt, BigUint};
@@ -634,27 +634,6 @@ pub fn type_infer(
                         expr_right.ann.1 = OptionalType::Well(NoirType::Tuple(new_exprs_types));
 
                         OptionalType::Well(NoirType::Bool)
-                    } else if op.is_shift() {
-                        let shift_amount_type =
-                            NoirType::Integer(Signedness::Unsigned, IntegerBitSize::Eight);
-
-                        match &expr_right.ann.1 {
-                            OptionalType::Well(t) if *t == shift_amount_type => {} // OK
-                            OptionalType::IntegerLiteral => {
-                                expr_right.unify_with_type(shift_amount_type)?;
-                            }
-                            OptionalType::Well(_) | OptionalType::PartialTuple(_) => {
-                                return Err(TypeInferenceError::NoirTypeError(
-                                    TypeCheckError::InvalidShiftSize { location },
-                                ));
-                            }
-                        }
-
-                        if let OptionalType::IntegerLiteral = &expr_left.ann.1 {
-                            expr_left.unify_with_type(default_literal_type.clone())?;
-                        }
-
-                        expr_left.ann.1.clone()
                     } else {
                         match (&expr_left.ann.1, &expr_right.ann.1) {
                             (OptionalType::Well(t1), OptionalType::Well(t2)) => {
@@ -871,7 +850,13 @@ pub fn type_infer(
                     if exprs.is_empty() {
                         // TODO(totel): better error?
                         return Err(TypeInferenceError::NoirTypeError(
-                            TypeCheckError::InvalidTypeForEntryPoint { location },
+                            TypeCheckError::ResolverError(
+                                ResolverError::Expected { 
+                                    location, 
+                                    expected: "non empty array literal",
+                                     got: "empty array literal"
+                                }
+                            ),
                         ));
                     }
 
@@ -1308,7 +1293,7 @@ mod tests {
 
     #[test]
     fn test_bitshift() {
-        let attribute = "ensures(1 << 256)";
+        let attribute = "ensures(1 as u8 << 256)";
         let state = empty_state();
         let attribute = parse_attribute(
             attribute,
@@ -1418,7 +1403,7 @@ mod tests {
 
     #[test]
     fn test_cast() {
-        let annotation = "ensures((15 as i16 - 3 > 2) & ((result as Field - 6) as u64 == 1 + a as u64 >> 4 as u8))";
+        let annotation = "ensures((15 as i16 - 3 > 2) & ((result as Field - 6) as u64 == 1 + a as u64 >> 4 as u64))";
         let state = empty_state();
         let attribute = parse_attribute(
             annotation,
