@@ -14,7 +14,6 @@ use noirc_driver::{CompilationResult, CompileError, CompileOptions, check_crate}
 use noirc_errors::Location;
 use noirc_errors::{CustomDiagnostic, Span};
 use noirc_evaluator::errors::{RuntimeError, SsaReport};
-use noirc_frontend::Kind;
 use noirc_frontend::graph::CrateGraph;
 use noirc_frontend::hir::def_map::{
     DefMaps, LocalModuleId, ModuleDefId, ModuleId, fully_qualified_module_path,
@@ -25,6 +24,7 @@ use noirc_frontend::hir_def::stmt::HirPattern;
 use noirc_frontend::monomorphization::ast::LocalId;
 use noirc_frontend::node_interner::{ExprId, FunctionModifiers, GlobalValue};
 use noirc_frontend::token::SecondaryAttribute;
+use noirc_frontend::{Kind, Type as HirType};
 use noirc_frontend::{
     debug::DebugInstrumenter,
     graph::CrateId,
@@ -41,7 +41,7 @@ use noirc_frontend::{
     token::SecondaryAttributeKind,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use vir::ast::Krate;
 
@@ -169,59 +169,37 @@ fn modified_monomorphize(
     def_maps: &DefMaps,
 ) -> Result<(Program, Vec<(FuncId, Vec<Attribute>)>), MonomorphizationErrorBundle> {
     let debug_type_tracker = DebugTypeTracker::build_from_debug_instrumenter(debug_instrumenter);
-    // NOTE: We are always passing `false` to the `force_unconstrained` argument
-    let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker, false);
-    monomorphizer.in_unconstrained_function = force_unconstrained;
+    let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker, force_unconstrained);
     let function_sig = monomorphizer
         .compile_main(main)
         .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
     let mut new_ids_to_old_ids: HashMap<FuncId, node_interner::FuncId> = HashMap::new();
     new_ids_to_old_ids.insert(Program::main_id(), main);
 
-    while !monomorphizer.queue.is_empty() {
-        let (next_fn_id, new_id, bindings, trait_method, is_unconstrained, location) =
-            monomorphizer.queue.pop_front().unwrap();
-        monomorphizer.locals.clear();
-
-        monomorphizer.in_unconstrained_function = is_unconstrained;
-
-        perform_instantiation_bindings(&bindings);
-        let interner = &monomorphizer.interner;
-        let impl_bindings = perform_impl_bindings(interner, trait_method, next_fn_id, location)
-            .map_err(MonomorphizationError::InterpreterError)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-
-        monomorphizer
-            .function(next_fn_id, new_id, location)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-        new_ids_to_old_ids.insert(new_id, next_fn_id);
-        undo_instantiation_bindings(impl_bindings);
-        undo_instantiation_bindings(bindings);
+    if let Some((old_id, new_id, ..)) = monomorphizer.peek_queue() {
+        // Update the map of the new func ids to old ids
+        new_ids_to_old_ids.insert(*new_id, *old_id);
     }
 
-    let func_sigs = monomorphizer
-        .finished_functions
-        .iter()
-        .flat_map(|(_, f)| {
-            if (!force_unconstrained && f.inline_type.is_entry_point())
-                || f.id == Program::main_id()
-            {
-                Some(f.func_sig.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
+    while monomorphizer
+        .process_next_job()
+        .map_err(|e| MonomorphizationErrorBundle::MonomorphizationError(e))?
+    {
+        if let Some((old_id, new_id, ..)) = monomorphizer.peek_queue() {
+            // Update the map of the new func ids to old ids
+            new_ids_to_old_ids.insert(*new_id, *old_id);
+        }
+    }
 
     // Clone because of the borrow checker
-    let globals = monomorphizer.finished_globals.clone().into_iter().collect::<BTreeMap<_, _>>();
+    let globals = monomorphizer.finished_globals().clone().into_iter().collect::<BTreeMap<_, _>>();
 
     let min_available_id: u32 =
-        monomorphizer.locals.values().map(|LocalId(id)| *id).max().unwrap_or_default() + 1;
+        monomorphizer.locals().values().map(|LocalId(id)| *id).max().unwrap_or_default() + 1;
     let min_available_id = Rc::new(RefCell::new(min_available_id));
 
     let functions_to_process: Vec<(FuncId, node_interner::FuncId)> = monomorphizer
-        .finished_functions
+        .finished_functions()
         .keys()
         .rev()
         .copied()
@@ -244,8 +222,8 @@ fn modified_monomorphize(
             collect_parameter_hir_types(&monomorphizer, &old_id);
 
         // Determine the crate ID of the function currently being processed.
-        let current_func_crate_id = monomorphizer.interner.function_meta(&old_id).source_crate;
-        let current_func_module_id = monomorphizer.interner.function_meta(&old_id).source_module;
+        let current_func_crate_id = monomorphizer.interner().function_meta(&old_id).source_crate;
+        let current_func_module_id = monomorphizer.interner().function_meta(&old_id).source_module;
 
         // Conditionally update the globals map based on the current crate context.
         update_globals_if_needed(
@@ -259,7 +237,7 @@ fn modified_monomorphize(
         );
 
         let attribute_data: Vec<_> = monomorphizer
-            .interner
+            .interner()
             .function_attributes(&old_id)
             .secondary
             .iter()
@@ -275,7 +253,7 @@ fn modified_monomorphize(
         let mut processed_attributes = Vec::new();
 
         for (annotation_body, location) in attribute_data {
-            let function_for_parser = &monomorphizer.finished_functions[&new_func_id];
+            let function_for_parser = &monomorphizer.finished_functions()[&new_func_id];
 
             // NOTE: #['...]
             //       ^^^^^^^ - received `Location`
@@ -290,7 +268,7 @@ fn modified_monomorphize(
                 location,
                 function_for_parser,
                 &globals,
-                &monomorphizer.finished_functions,
+                &monomorphizer.finished_functions(),
             )
             .map_err(|e| MonomorphizationErrorBundle::ParserErrors(e.0))?;
             // Ghost functions always get a monomorphization request because
@@ -328,9 +306,9 @@ fn modified_monomorphize(
             };
 
             let final_state = State {
-                function: &monomorphizer.finished_functions[&new_func_id],
+                function: &monomorphizer.finished_functions()[&new_func_id],
                 global_constants: &globals,
-                functions: &monomorphizer.finished_functions,
+                functions: &monomorphizer.finished_functions(),
                 min_local_id: min_available_id.clone(),
             };
 
@@ -345,21 +323,7 @@ fn modified_monomorphize(
         fv_annotations.push((func_id, vec![Attribute::Ghost]));
     });
 
-    let functions = vecmap(monomorphizer.finished_functions, |(_, f)| f);
-
-    let (debug_variables, debug_functions, debug_types) =
-        monomorphizer.debug_type_tracker.extract_vars_and_types();
-
-    let program = Program::new(
-        functions,
-        func_sigs,
-        function_sig,
-        monomorphizer.return_location,
-        globals,
-        debug_variables,
-        debug_functions,
-        debug_types,
-    );
+    let program = monomorphizer.into_program(function_sig);
 
     Ok((program.handle_ownership(), fv_annotations))
 }
@@ -399,11 +363,11 @@ fn type_infer_attribute_expr(
     for _ in 0..MAX_RETRIES {
         // The following two variables are defined inside of the `for` loop
         // because of the borrow checker.
-        let function = &monomorphizer.finished_functions[&new_func_id];
+        let function = &monomorphizer.finished_functions()[&new_func_id];
         let state = State {
             function,
             global_constants: &globals,
-            functions: &monomorphizer.finished_functions,
+            functions: &monomorphizer.finished_functions(),
             min_local_id: min_available_id.clone(),
         };
 
@@ -478,126 +442,106 @@ fn monomorphize_one_function(
     new_ids_to_old_ids: &mut HashMap<FuncId, node_interner::FuncId>,
     to_be_added_ghost_attribute: &mut HashSet<FuncId>,
 ) -> Result<(), MonomorphizationErrorBundle> {
-    let func_id = monomorphizer.interner.find_function(func_name).expect(&format!(
-        "The provided function name {}, was not found during the completion of MonomorphRequest",
-        func_name
-    ));
-    let func_id_as_expr_id = monomorphizer.interner.function(&func_id).as_expr();
+    // TODO(totel): Change expect!() to something else
+    let hir_func_id = monomorphizer
+        .interner()
+        .find_function(func_name)
+        .expect(&format!("Function {} was not found in the node interner", func_name));
 
-    let pseudo_args: Vec<ExprId> = std::iter::repeat_with(|| {
-        monomorphizer.interner.push_expr_full(
-            HirExpression::Literal(HirLiteral::Bool(true)),
-            Location::dummy(),
-            noirc_frontend::Type::Bool,
-        )
-    })
-    .take(param_types.len())
-    .collect();
-
-    let pseudo_call_expr = HirExpression::Call(HirCallExpression {
-        func: func_id_as_expr_id,
-        arguments: pseudo_args,
-        location: Location::dummy(),
-        is_macro_call: false,
-    });
-
-    let pseudo_call_expr_id = monomorphizer.interner.push_expr_full(
-        pseudo_call_expr,
-        Location::dummy(),
-        noirc_frontend::Type::Unit,
-    );
-
-    let mut typ_bindings = noirc_frontend::Type::Unit.instantiate(&monomorphizer.interner).1;
-
-    // Bind generic types to the type used in the function call
-    monomorphizer
-        .interner
-        .function_meta(&func_id)
-        .parameters
-        .0
-        .iter()
-        .map(|(_pattern, typ, _visibility)| typ)
-        .enumerate()
-        .filter_map(|(pos, typ)| match typ {
-            noirc_frontend::Type::NamedGeneric(named_generic) => {
-                Some((pos, &named_generic.type_var))
-            }
-            noirc_frontend::Type::TypeVariable(type_var) => Some((pos, type_var)),
-            _ => None,
+    let hir_param_types: Vec<_> = param_types
+        .into_iter()
+        .map(|typ| {
+            convert_mast_to_noir_type(
+                typ.unwrap_or(noirc_frontend::monomorphization::ast::Type::Field),
+            )
         })
-        .for_each(|(param_index, type_var)| {
-            // The last argument of method `.insert` is the important one
-            typ_bindings.insert(
-                type_var.id(),
-                (
-                    type_var.clone(),
-                    Kind::Normal,
-                    convert_mast_to_noir_type(
-                        param_types[param_index]
-                            .clone()
-                            .unwrap_or(noirc_frontend::monomorphization::ast::Type::Field),
-                    ),
-                ),
-            );
-        });
+        .collect();
 
-    monomorphizer.interner.store_instantiation_bindings(pseudo_call_expr_id, typ_bindings);
+    let new_fn_id = monomorphize_function_by_func_id(monomorphizer, hir_func_id, &hir_param_types)
+        .map_err(|e| MonomorphizationErrorBundle::MonomorphizationError(e))?;
+    new_ids_to_old_ids.insert(new_fn_id, hir_func_id);
+    if has_ghost_attribute(monomorphizer.interner().function_modifiers(&hir_func_id)) {
+        to_be_added_ghost_attribute.insert(new_fn_id);
+    } else if func_name == OLD {
+        // Note: We don't want to monomorphize `fv_std::old` into
+        // a ghost function because we may get a verifier error for
+        // having a ghost function with a mut reference parameter type.
 
-    // NOTE: `queue_function` was made public by us
-    monomorphizer.queue_function(
-        func_id,
-        pseudo_call_expr_id,
-        monomorphizer.interner.id_type(func_id_as_expr_id),
-        vec![],
-        None,
-    );
+        // The function call to `fv_std::old` gets converted to a special
+        // Verus expressions anyways. Therefore the function `old` is not
+        // being actually called anywhere in the code.
 
-    while !monomorphizer.queue.is_empty() {
-        let (next_fn_id, new_id, bindings, trait_method, is_unconstrained, location) =
-            monomorphizer.queue.pop_front().unwrap();
-        monomorphizer.locals.clear();
+        // Therefore we don't want to produce an error
+    } else {
+        // A non-ghost function has been called in a FV annotation.
+        // This isn't allowed and we have to produce an adequate error.
 
-        monomorphizer.in_unconstrained_function = is_unconstrained;
-
-        perform_instantiation_bindings(&bindings);
-        let interner = &monomorphizer.interner;
-        let impl_bindings = perform_impl_bindings(interner, trait_method, next_fn_id, location)
-            .map_err(MonomorphizationError::InterpreterError)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-
-        monomorphizer
-            .function(next_fn_id, new_id, location)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-        new_ids_to_old_ids.insert(new_id, next_fn_id);
-        undo_instantiation_bindings(impl_bindings);
-        undo_instantiation_bindings(bindings);
-
-        if has_ghost_attribute(monomorphizer.interner.function_modifiers(&func_id)) {
-            to_be_added_ghost_attribute.insert(new_id);
-        } else if func_name == OLD {
-            // Note: We don't want to monomorphize `fv_std::old` into
-            // a ghost function because we may get a verifier error for
-            // having a ghost function with a mut reference parameter type.
-
-            // The function call to `fv_std::old` gets converted to a special
-            // Verus expressions anyways. Therefore the function `old` is not
-            // being actually called anywhere in the code.
-
-            // Therefore we don't want to produce an error
-        } else {
-            // A non-ghost function has been called in a FV annotation.
-            // This isn't allowed and we have to produce an adequate error.
-
-            return Err(MonomorphizationErrorBundle::FvError(
-                wrapper_errors::FvMonomorphizationError::ExecInSpecError {
-                    func_name: func_name.to_string(),
-                    location: monomorphizer.interner.function_meta(&func_id).location,
-                },
-            ));
-        }
+        return Err(MonomorphizationErrorBundle::FvError(
+            wrapper_errors::FvMonomorphizationError::ExecInSpecError {
+                func_name: func_name.to_string(),
+                location: monomorphizer.interner().function_meta(&hir_func_id).location,
+            },
+        ));
     }
 
     Ok(())
+}
+
+pub fn monomorphize_function_by_func_id(
+    monomorphizer: &mut Monomorphizer,
+    func_id: node_interner::FuncId,
+    param_types: &[HirType],
+) -> Result<FuncId, MonomorphizationError> {
+    let function_meta = monomorphizer.interner().function_meta(&func_id).clone();
+    let param_count = function_meta.parameters.len();
+
+    assert_eq!(
+        param_types.len(),
+        param_count,
+        "monomorphize_function_by_name called with the wrong number of parameter types",
+    );
+
+    let func_expr_id = monomorphizer.interner().function(&func_id).as_expr();
+
+    let (_, mut type_bindings) = HirType::Unit.instantiate(&monomorphizer.interner());
+
+    for (index, (_pattern, param_type, _)) in function_meta.parameters.0.iter().enumerate() {
+        let binding_type = param_types[index].clone();
+
+        match param_type.follow_bindings() {
+            HirType::NamedGeneric(named_generic) => {
+                type_bindings.insert(
+                    named_generic.type_var.id(),
+                    (named_generic.type_var.clone(), Kind::Normal, binding_type),
+                );
+            }
+            HirType::TypeVariable(type_var) => {
+                type_bindings.insert(type_var.id(), (type_var.clone(), Kind::Normal, binding_type));
+            }
+            _ => {}
+        }
+    }
+
+    let function_type = monomorphizer.interner().id_type(func_expr_id);
+    let queued_id = {
+        let turbofish_generics = Vec::new();
+
+        let location = Location::dummy();
+        let bindings = &type_bindings;
+        let bindings = monomorphizer.follow_bindings(bindings);
+        monomorphizer.queue_function_with_bindings(
+            func_id,
+            location,
+            bindings,
+            function_type.clone(),
+            turbofish_generics,
+            None,
+        )
+    };
+
+    monomorphizer.process_queue()?;
+
+    Ok(queued_id)
 }
 
 fn has_ghost_attribute(func_modifiers: &FunctionModifiers) -> bool {
@@ -610,7 +554,7 @@ fn collect_parameter_hir_types(
     monomorphizer: &Monomorphizer,
     old_id: &node_interner::FuncId,
 ) -> HashMap<String, noirc_frontend::Type> {
-    let interner = &monomorphizer.interner;
+    let interner = &monomorphizer.interner();
     let func_meta = interner.function_meta(old_id);
 
     let mut struct_arguments: HashMap<String, noirc_frontend::Type> = func_meta
@@ -673,7 +617,7 @@ fn update_globals_if_needed(
             .collect();
 
         *globals_with_paths = monomorphizer
-            .interner
+            .interner()
             .get_all_globals()
             .iter()
             .map(|global_info| {
