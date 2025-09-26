@@ -41,7 +41,7 @@ use noirc_frontend::{
     token::SecondaryAttributeKind,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use vir::ast::Krate;
 
@@ -171,36 +171,29 @@ fn modified_monomorphize(
     let debug_type_tracker = DebugTypeTracker::build_from_debug_instrumenter(debug_instrumenter);
     // NOTE: We are always passing `false` to the `force_unconstrained` argument
     let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker, false);
-    monomorphizer.in_unconstrained_function = force_unconstrained;
     let function_sig = monomorphizer
         .compile_main(main)
         .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
     let mut new_ids_to_old_ids: HashMap<FuncId, node_interner::FuncId> = HashMap::new();
     new_ids_to_old_ids.insert(Program::main_id(), main);
 
-    while !monomorphizer.queue.is_empty() {
-        let (next_fn_id, new_id, bindings, trait_method, is_unconstrained, location) =
-            monomorphizer.queue.pop_front().unwrap();
-        monomorphizer.locals.clear();
+    if let Some((old_id, new_id, ..)) = monomorphizer.peek_queue() {
+        // Update the map of the new func ids to old ids 
+        new_ids_to_old_ids.insert(*new_id, *old_id);
+    }
 
-        monomorphizer.in_unconstrained_function = is_unconstrained;
-
-        perform_instantiation_bindings(&bindings);
-        let interner = &monomorphizer.interner;
-        let impl_bindings = perform_impl_bindings(interner, trait_method, next_fn_id, location)
-            .map_err(MonomorphizationError::InterpreterError)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-
-        monomorphizer
-            .function(next_fn_id, new_id, location)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-        new_ids_to_old_ids.insert(new_id, next_fn_id);
-        undo_instantiation_bindings(impl_bindings);
-        undo_instantiation_bindings(bindings);
+    while monomorphizer
+        .process_next_job()
+        .map_err(|e| MonomorphizationErrorBundle::MonomorphizationError(e))?
+    {
+        if let Some((old_id, new_id, ..)) = monomorphizer.peek_queue() {
+            // Update the map of the new func ids to old ids 
+            new_ids_to_old_ids.insert(*new_id, *old_id);
+        }
     }
 
     let func_sigs = monomorphizer
-        .finished_functions
+        .finished_functions()
         .iter()
         .flat_map(|(_, f)| {
             if (!force_unconstrained && f.inline_type.is_entry_point())
@@ -214,14 +207,14 @@ fn modified_monomorphize(
         .collect();
 
     // Clone because of the borrow checker
-    let globals = monomorphizer.finished_globals.clone().into_iter().collect::<BTreeMap<_, _>>();
+    let globals = monomorphizer.finished_globals().clone().into_iter().collect::<BTreeMap<_, _>>();
 
     let min_available_id: u32 =
-        monomorphizer.locals.values().map(|LocalId(id)| *id).max().unwrap_or_default() + 1;
+        monomorphizer.locals().values().map(|LocalId(id)| *id).max().unwrap_or_default() + 1;
     let min_available_id = Rc::new(RefCell::new(min_available_id));
 
     let functions_to_process: Vec<(FuncId, node_interner::FuncId)> = monomorphizer
-        .finished_functions
+        .finished_functions()
         .keys()
         .rev()
         .copied()
@@ -275,7 +268,7 @@ fn modified_monomorphize(
         let mut processed_attributes = Vec::new();
 
         for (annotation_body, location) in attribute_data {
-            let function_for_parser = &monomorphizer.finished_functions[&new_func_id];
+            let function_for_parser = &monomorphizer.finished_functions()[&new_func_id];
 
             // NOTE: #['...]
             //       ^^^^^^^ - received `Location`
@@ -290,7 +283,7 @@ fn modified_monomorphize(
                 location,
                 function_for_parser,
                 &globals,
-                &monomorphizer.finished_functions,
+                &monomorphizer.finished_functions(),
             )
             .map_err(|e| MonomorphizationErrorBundle::ParserErrors(e.0))?;
             // Ghost functions always get a monomorphization request because
@@ -328,9 +321,9 @@ fn modified_monomorphize(
             };
 
             let final_state = State {
-                function: &monomorphizer.finished_functions[&new_func_id],
+                function: &monomorphizer.finished_functions()[&new_func_id],
                 global_constants: &globals,
-                functions: &monomorphizer.finished_functions,
+                functions: &monomorphizer.finished_functions(),
                 min_local_id: min_available_id.clone(),
             };
 
@@ -345,7 +338,7 @@ fn modified_monomorphize(
         fv_annotations.push((func_id, vec![Attribute::Ghost]));
     });
 
-    let functions = vecmap(monomorphizer.finished_functions, |(_, f)| f);
+    let functions = vecmap(monomorphizer.finished_functions(), |(_, f)| f.clone());
 
     let (debug_variables, debug_functions, debug_types) =
         monomorphizer.debug_type_tracker.extract_vars_and_types();
@@ -354,7 +347,7 @@ fn modified_monomorphize(
         functions,
         func_sigs,
         function_sig,
-        monomorphizer.return_location,
+        monomorphizer.return_location(),
         globals,
         debug_variables,
         debug_functions,
@@ -399,11 +392,11 @@ fn type_infer_attribute_expr(
     for _ in 0..MAX_RETRIES {
         // The following two variables are defined inside of the `for` loop
         // because of the borrow checker.
-        let function = &monomorphizer.finished_functions[&new_func_id];
+        let function = &monomorphizer.finished_functions()[&new_func_id];
         let state = State {
             function,
             global_constants: &globals,
-            functions: &monomorphizer.finished_functions,
+            functions: &monomorphizer.finished_functions(),
             min_local_id: min_available_id.clone(),
         };
 
@@ -552,28 +545,24 @@ fn monomorphize_one_function(
         None,
     );
 
-    while !monomorphizer.queue.is_empty() {
-        let (next_fn_id, new_id, bindings, trait_method, is_unconstrained, location) =
-            monomorphizer.queue.pop_front().unwrap();
-        monomorphizer.locals.clear();
-
-        monomorphizer.in_unconstrained_function = is_unconstrained;
-
-        perform_instantiation_bindings(&bindings);
-        let interner = &monomorphizer.interner;
-        let impl_bindings = perform_impl_bindings(interner, trait_method, next_fn_id, location)
-            .map_err(MonomorphizationError::InterpreterError)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-
-        monomorphizer
-            .function(next_fn_id, new_id, location)
-            .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
-        new_ids_to_old_ids.insert(new_id, next_fn_id);
-        undo_instantiation_bindings(impl_bindings);
-        undo_instantiation_bindings(bindings);
-
+    let mut all_finished_functions: BTreeSet<FuncId> =
+        monomorphizer.finished_functions().iter().map(|(f_id, _)| *f_id).collect();
+    while monomorphizer
+        .process_next_job()
+        .map_err(|e| MonomorphizationErrorBundle::MonomorphizationError(e))?
+    {
+        let new_id = monomorphizer
+            .finished_functions()
+            .iter()
+            .find(|(func_id, _)| !all_finished_functions.contains(func_id))
+            .expect(
+                "Expected that a function has been monomorhpized and added to finished_functions.",
+            )
+            .0;
+        all_finished_functions.insert(*new_id);
+        new_ids_to_old_ids.insert(*new_id, func_id);
         if has_ghost_attribute(monomorphizer.interner.function_modifiers(&func_id)) {
-            to_be_added_ghost_attribute.insert(new_id);
+            to_be_added_ghost_attribute.insert(*new_id);
         } else if func_name == OLD {
             // Note: We don't want to monomorphize `fv_std::old` into
             // a ghost function because we may get a verifier error for
