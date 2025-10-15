@@ -61,10 +61,14 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
         }
         Expression::For(for_expr) => {
             // Evaluate bounds
-            let start_range = collect_constant_from_expression(&for_expr.start_range, constants)
-                .expect("All `for` loops in constrained functions must be bounded.");
-            let end_range = collect_constant_from_expression(&for_expr.end_range, constants)
-                .expect("All `for` loops in constrained functions must be bounded.");
+            let start_range = match collect_constant_from_expression(&for_expr.start_range, constants) {
+                Some(constant) => constant,
+                None => return, // The `for` loop can't be unrolled, we just leave it to be converted to VIR.
+            };
+            let end_range = match collect_constant_from_expression(&for_expr.end_range, constants) {
+                Some(constant) => constant,
+                None => return, // The `for` loop can't be unrolled, we just leave it to be converted to VIR.
+            };
 
             let start: i128 =
                 start_range.try_to_signed().expect("Ranges should be convertible to i128");

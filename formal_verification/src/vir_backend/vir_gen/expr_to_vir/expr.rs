@@ -20,20 +20,20 @@ use noirc_errors::Location;
 use noirc_frontend::{
     ast::{BinaryOpKind, UnaryOp},
     monomorphization::ast::{
-        Assign, Binary, Call, Cast, Definition, Expression, Function, GlobalId, Ident, If, Index,
-        LValue, Literal, Match, Type, Unary, While,
+        Assign, Binary, Call, Cast, Definition, Expression, For, Function, GlobalId, Ident, If,
+        Index, LValue, Let, Literal, Match, Type, Unary, While,
     },
     shared::Signedness,
     signed_field::SignedField,
 };
 use num_bigint::{BigInt, BigUint};
-use num_traits::ToPrimitive;
+use num_traits::{One, ToPrimitive};
 use vir::{
     ast::{
         AirQuant, ArithOp, AutospecUsage, BinaryOp, BinderX, BitwiseOp, CallTarget, CallTargetKind,
-        FieldOpr, Fun, FunX, Idents, ImplPath, ImplPaths, InequalityOp, IntRange, PathX, Primitive,
-        Quant, Typ, TypDecoration, Typs, UnaryOp as VirUnaryOp, UnaryOpr, VarBinder, VarBinderX,
-        VariantCheck,
+        FieldOpr, Fun, FunX, Idents, ImplPath, ImplPaths, InequalityOp, IntRange, LoopInvariant,
+        LoopInvariantKind, PathX, Primitive, Quant, Typ, TypDecoration, Typs,
+        UnaryOp as VirUnaryOp, UnaryOpr, VarBinder, VarBinderX, VariantCheck,
     },
     ast_util::{bitwidth_from_type, int_range_from_type, is_integer_type_signed, unit_typ},
 };
@@ -75,7 +75,9 @@ pub fn ast_expr_to_vir_expr(
         Expression::Binary(binary) => ast_binary_to_vir_expr(binary, mode, globals),
         Expression::Index(index) => ast_index_to_vir_expr(index, mode, globals),
         Expression::Cast(cast) => ast_cast_to_vir_expr(cast, mode, globals),
-        Expression::For(_) => todo!(), //TODO(totel) This is a very complicated expression to convert
+        Expression::For(for_expr) => {
+            ast_for_to_vir_expr(for_expr, expression_location(expr), mode, globals)
+        }
         Expression::Loop(loop_body) => {
             ast_loop_to_vir_expr(loop_body, expression_location(expr), mode, globals)
         }
@@ -880,6 +882,64 @@ fn ast_while_to_vir_expr(
     )
 }
 
+/// Converts a Noir `for` loop expression into a `while` loop VIR expression.
+fn ast_for_to_vir_expr(
+    for_expression: &For,
+    location: Option<Location>,
+    mode: Mode,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Expr {
+    let (init_stmt, var_ident, typ, increment_stmt) =
+        build_for_loop_index(for_expression, location, mode, globals);
+    let mut for_loop_body_expr = ast_expr_to_vir_expr(&for_expression.block, mode, globals);
+    // Insert the incrementation expression `$i += 1` at the end of the loop body
+    let for_loop_body_expr = append_expr_to_block(for_loop_body_expr, increment_stmt);
+    let unit_vir_type = make_unit_vir_type();
+
+    let for_index_as_rhs_expr = build_for_loop_index_rhs_expr(&var_ident, &typ, location);
+    let end_range_expr = ast_expr_to_vir_expr(&for_expression.end_range, mode, globals);
+
+    let condition_expr =
+        build_for_loop_condition(for_index_as_rhs_expr.clone(), end_range_expr.clone(), location);
+    let decreases_clause =
+        build_for_loop_decreases(for_index_as_rhs_expr.clone(), end_range_expr.clone(), location);
+    let invariant_clause =
+        build_for_loop_invariant(for_index_as_rhs_expr, end_range_expr, location);
+
+    let exprx = ExprX::Loop {
+        loop_isolation: true,
+        is_for_loop: false,
+        label: None,
+        cond: Some(condition_expr),
+        body: for_loop_body_expr,
+        invs: Arc::new(vec![invariant_clause]),
+        decrease: Arc::new(vec![decreases_clause]),
+    };
+
+    let while_expr = SpannedTyped::new(
+        &build_span_no_id(
+            format!(
+                "While (generated from a for loop) with iteration {}={}..{}",
+                for_expression.index_name, for_expression.start_range, for_expression.end_range
+            ),
+            location,
+        ),
+        &make_unit_vir_type(),
+        exprx,
+    );
+
+    let final_block = ExprX::Block(Arc::new(vec![init_stmt]), Some(while_expr));
+
+    SpannedTyped::new(
+        &build_span_no_id(
+            "Transformed for loop expression into a while loop".to_string(),
+            location,
+        ),
+        &unit_vir_type,
+        final_block,
+    )
+}
+
 fn binary_op_to_vir_binary_op(
     ast_binary_op: &BinaryOpKind,
     mode: Mode,
@@ -1080,4 +1140,137 @@ pub fn wrap_with_field_modulo(dividend: Expr, mode: Mode) -> Expr {
         ExprX::Binary(BinaryOp::Arith(ArithOp::EuclideanMod, mode), dividend, divisor_expr);
 
     SpannedTyped::new(&expr_span, &expr_type, modulo_exprx)
+}
+
+// For loop to VIR expr function helpers
+
+/// Precomputed pieces required to lower the Noir loop index into VIR.
+/// Builds the VIR statements and identifiers that represent the loop index initialization and
+/// increment. Returns `(init_stmt, index_ident, index_type, increment_stmt)`.
+fn build_for_loop_index(
+    for_expression: &For,
+    location: Option<Location>,
+    mode: Mode,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> (Stmt, VarIdent, Arc<TypX>, Stmt) {
+    let init_stmt = ast_expr_to_stmt(
+        &Expression::Let(Let {
+            id: for_expression.index_variable,
+            mutable: true,
+            name: for_expression.index_name.clone(),
+            expression: for_expression.start_range.clone(),
+        }),
+        mode,
+        globals,
+    );
+
+    let var_ident =
+        build_var_ident(for_expression.index_name.clone(), for_expression.index_variable.0);
+    let typ = ast_type_to_vir_type(&for_expression.index_type);
+
+    let unit_typ = make_unit_vir_type();
+    let lhs_expr = SpannedTyped::new(
+        &build_span_no_id("Loop index increment lhs".to_string(), location),
+        &typ,
+        ExprX::VarLoc(var_ident.clone()),
+    );
+    let rhs_expr = SpannedTyped::new(
+        &build_span_no_id("Loop index increment rhs".to_string(), location),
+        &typ,
+        ExprX::Const(Constant::Int(BigInt::one())),
+    );
+    let increment_expr = SpannedTyped::new(
+        &build_span_no_id("Loop index increment expression".to_string(), location),
+        &unit_typ,
+        ExprX::Assign {
+            init_not_mut: false,
+            lhs: lhs_expr,
+            rhs: rhs_expr,
+            op: Some(BinaryOp::Arith(ArithOp::Add, mode)),
+        },
+    );
+    let increment_stmt = Spanned::new(
+        build_span_no_id("Loop index incrementation statement".to_string(), location),
+        StmtX::Expr(increment_expr),
+    );
+
+    (init_stmt, var_ident, typ, increment_stmt)
+}
+
+/// Ensures the provided expression is a VIR block and appends the supplied statement at the tail.
+fn append_expr_to_block(body: Expr, stmt: Stmt) -> Expr {
+    match &body.x {
+        ExprX::Block(existing_stmts, last_expr) => {
+            let mut new_stmts = existing_stmts.as_ref().clone();
+            new_stmts.push(stmt);
+            let new_exprx = ExprX::Block(Arc::new(new_stmts), last_expr.clone());
+
+            SpannedTyped::new(&body.span, &body.typ, new_exprx)
+        }
+        _ => {
+            let mut stmts = Vec::new();
+            stmts.push(Spanned::new(body.span.clone(), StmtX::Expr(body.clone())));
+            stmts.push(stmt);
+            let new_exprx = ExprX::Block(Arc::new(stmts), None);
+
+            SpannedTyped::new(&body.span, &body.typ, new_exprx)
+        }
+    }
+}
+
+/// Wraps the loop index variable into a VIR expression with span/type information.
+fn build_for_loop_index_rhs_expr(
+    var_ident: &VarIdent,
+    typ: &Arc<TypX>,
+    location: Option<Location>,
+) -> Expr {
+    SpannedTyped::new(
+        &build_span_no_id("For loop index".to_string(), location),
+        typ,
+        ExprX::Var(var_ident.clone()),
+    )
+}
+
+/// Produces the `<index < end>` condition used by the synthetic while loop.
+fn build_for_loop_condition(
+    index_expr: Expr,
+    end_range_expr: Expr,
+    location: Option<Location>,
+) -> Expr {
+    let bool_type = Arc::new(TypX::Bool);
+    SpannedTyped::new(
+        &build_span_no_id("While condition expression".to_string(), location),
+        &bool_type,
+        ExprX::Binary(BinaryOp::Inequality(InequalityOp::Lt), index_expr, end_range_expr),
+    )
+}
+
+/// Generates the decreases clause that witnesses termination of the lowered loop.
+fn build_for_loop_decreases(
+    index_expr: Expr,
+    end_range_expr: Expr,
+    location: Option<Location>,
+) -> Expr {
+    let int_typ = Arc::new(TypX::Int(IntRange::Int));
+    SpannedTyped::new(
+        &build_span_no_id("Decrease clause".to_string(), location),
+        &int_typ,
+        ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), end_range_expr, index_expr),
+    )
+}
+
+/// Describes the `index <= end` invariant that mirrors Noir's range semantics.
+fn build_for_loop_invariant(
+    index_expr: Expr,
+    end_range_expr: Expr,
+    location: Option<Location>,
+) -> LoopInvariant {
+    let bool_type = Arc::new(TypX::Bool);
+    let invariant_expr = SpannedTyped::new(
+        &build_span_no_id("Invariant clause (index <= end_range)".to_string(), location),
+        &bool_type,
+        ExprX::Binary(BinaryOp::Inequality(InequalityOp::Le), index_expr, end_range_expr),
+    );
+
+    LoopInvariant { kind: LoopInvariantKind::InvariantAndEnsures, inv: invariant_expr }
 }
