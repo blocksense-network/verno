@@ -4,6 +4,8 @@ pub fn old<T>(x: T) -> T {
 
 pub fn assume(_x: bool) {}
 
+pub fn invariant(_x: bool) {}
+
 pub global U8_MIN: u8 = 0;
 pub global U8_MAX: u8 = 255;
 

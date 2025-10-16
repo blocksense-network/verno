@@ -61,10 +61,11 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
         }
         Expression::For(for_expr) => {
             // Evaluate bounds
-            let start_range = match collect_constant_from_expression(&for_expr.start_range, constants) {
-                Some(constant) => constant,
-                None => return, // The `for` loop can't be unrolled, we just leave it to be converted to VIR.
-            };
+            let start_range =
+                match collect_constant_from_expression(&for_expr.start_range, constants) {
+                    Some(constant) => constant,
+                    None => return, // The `for` loop can't be unrolled, we just leave it to be converted to VIR.
+                };
             let end_range = match collect_constant_from_expression(&for_expr.end_range, constants) {
                 Some(constant) => constant,
                 None => return, // The `for` loop can't be unrolled, we just leave it to be converted to VIR.

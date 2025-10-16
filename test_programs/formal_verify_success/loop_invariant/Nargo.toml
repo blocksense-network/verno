@@ -1,0 +1,8 @@
+[package]
+name = "loop_invariant"
+type = "bin"
+authors = [""]
+compiler_version = ">=0.35.0"
+
+[dependencies]
+fv_std = { path = "../../../fv_std" }

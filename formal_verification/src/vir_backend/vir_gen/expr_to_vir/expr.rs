@@ -6,7 +6,7 @@ use crate::{
         build_span, build_span_no_id,
         expr_to_vir::{
             expression_location,
-            std_functions::handle_fv_std_call,
+            std_functions::{INVARIANT, handle_fv_std_call},
             types::{
                 ast_const_to_vir_type_const, ast_type_to_vir_type, build_tuple_type,
                 get_binary_op_type, get_bit_not_bitwidth, get_collection_type_len,
@@ -302,6 +302,97 @@ fn ast_expr_to_stmt(
 
         Spanned::new(expr_as_vir.span.clone(), stmtx)
     }
+}
+
+fn loop_body_to_vir_expr_and_invariants(
+    body: &Expression,
+    location: Option<Location>,
+    mode: Mode,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> (Expr, Vec<LoopInvariant>) {
+    match body {
+        Expression::Block(block) => {
+            block_to_vir_expr_and_invariants(block, location, mode, globals)
+        }
+        _ => (ast_expr_to_vir_expr(body, mode, globals), Vec::new()),
+    }
+}
+
+fn block_to_vir_expr_and_invariants(
+    block: &Vec<Expression>,
+    location: Option<Location>,
+    mode: Mode,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> (Expr, Vec<LoopInvariant>) {
+    let mut stmts: Vec<Stmt> = Vec::new();
+    let mut invariants: Vec<LoopInvariant> = Vec::new();
+
+    for expr in block {
+        if let Some(loop_invariant) = try_collect_loop_invariant(expr, globals) {
+            invariants.push(loop_invariant);
+            continue;
+        }
+
+        stmts.push(ast_expr_to_stmt(expr, mode, globals));
+    }
+
+    let (last_expr, block_type) = match stmts.pop() {
+        Some(stmt) => match &stmt.as_ref().x {
+            StmtX::Expr(expr) => {
+                let typ = expr.typ.clone();
+                (Some(expr.clone()), typ)
+            }
+            StmtX::Decl { .. } => {
+                stmts.push(stmt);
+                (None, make_unit_vir_type())
+            }
+        },
+        None => (None, make_unit_vir_type()),
+    };
+
+    let exprx = ExprX::Block(Arc::new(stmts), last_expr);
+
+    (
+        SpannedTyped::new(
+            &build_span_no_id("Block of statements (loop body)".to_string(), location),
+            &block_type,
+            exprx,
+        ),
+        invariants,
+    )
+}
+
+fn try_collect_loop_invariant(
+    expr: &Expression,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Option<LoopInvariant> {
+    match expr {
+        Expression::Semi(inner) => try_collect_loop_invariant(inner, globals),
+        Expression::Call(call_expr) => loop_invariant_from_call(call_expr, globals),
+        _ => None,
+    }
+}
+
+fn loop_invariant_from_call(
+    call_expr: &Call,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Option<LoopInvariant> {
+    let Expression::Ident(function_ident) = call_expr.func.as_ref() else {
+        return None;
+    };
+
+    if function_ident.name.as_str() != INVARIANT {
+        return None;
+    }
+
+    assert!(
+        call_expr.arguments.len() == 1,
+        "Expected function `invariant` from `noir_fv_std` to have exactly one argument"
+    );
+
+    let condition_expr = ast_expr_to_vir_expr(&call_expr.arguments[0], Mode::Spec, globals);
+
+    Some(LoopInvariant { kind: LoopInvariantKind::InvariantAndEnsures, inv: condition_expr })
 }
 
 fn ast_unary_to_vir_expr(
@@ -836,13 +927,16 @@ fn ast_loop_to_vir_expr(
     mode: Mode,
     globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
 ) -> Expr {
+    let (body_expr, invariants) =
+        loop_body_to_vir_expr_and_invariants(loop_body, location, mode, globals);
+
     let exprx = ExprX::Loop {
         loop_isolation: true,
         is_for_loop: false,
         label: None,
         cond: None,
-        body: ast_expr_to_vir_expr(loop_body, mode, globals),
-        invs: Arc::new(Vec::new()),
+        body: body_expr,
+        invs: Arc::new(invariants),
         decrease: Arc::new(Vec::new()),
     };
 
@@ -859,13 +953,16 @@ fn ast_while_to_vir_expr(
     mode: Mode,
     globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
 ) -> Expr {
+    let (body_expr, invariants) =
+        loop_body_to_vir_expr_and_invariants(&while_expression.body, location, mode, globals);
+
     let exprx = ExprX::Loop {
         loop_isolation: true,
         is_for_loop: false,
         label: None,
         cond: Some(ast_expr_to_vir_expr(&while_expression.condition, mode, globals)),
-        body: ast_expr_to_vir_expr(&while_expression.body, mode, globals),
-        invs: Arc::new(Vec::new()),
+        body: body_expr,
+        invs: Arc::new(invariants),
         decrease: Arc::new(Vec::new()),
     };
 
@@ -891,7 +988,8 @@ fn ast_for_to_vir_expr(
 ) -> Expr {
     let (init_stmt, var_ident, typ, increment_stmt) =
         build_for_loop_index(for_expression, location, mode, globals);
-    let mut for_loop_body_expr = ast_expr_to_vir_expr(&for_expression.block, mode, globals);
+    let (for_loop_body_expr, mut user_invariants) =
+        loop_body_to_vir_expr_and_invariants(&for_expression.block, location, mode, globals);
     // Insert the incrementation expression `$i += 1` at the end of the loop body
     let for_loop_body_expr = append_expr_to_block(for_loop_body_expr, increment_stmt);
     let unit_vir_type = make_unit_vir_type();
@@ -906,13 +1004,17 @@ fn ast_for_to_vir_expr(
     let invariant_clause =
         build_for_loop_invariant(for_index_as_rhs_expr, end_range_expr, location);
 
+    let mut invariants = Vec::with_capacity(user_invariants.len() + 1);
+    invariants.push(invariant_clause);
+    invariants.append(&mut user_invariants);
+
     let exprx = ExprX::Loop {
         loop_isolation: true,
         is_for_loop: false,
         label: None,
         cond: Some(condition_expr),
         body: for_loop_body_expr,
-        invs: Arc::new(vec![invariant_clause]),
+        invs: Arc::new(invariants),
         decrease: Arc::new(vec![decreases_clause]),
     };
 
