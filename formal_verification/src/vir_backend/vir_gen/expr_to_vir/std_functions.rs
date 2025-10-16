@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use noirc_errors::Location;
 use noirc_frontend::monomorphization::ast::{Call, Expression, GlobalId, Type};
@@ -19,6 +19,8 @@ use crate::vir_backend::vir_gen::{
 static ASSUME: &str = "assume";
 /// The function `old()` from `fv_std_lib`
 pub static OLD: &str = "old";
+/// The function `invariant()` from `fv_std_lib`
+pub static INVARIANT: &str = "invariant";
 
 /// Handles function calls from the `fv_std` library and converts them to special VIR expressions.
 pub fn handle_fv_std_call(
@@ -95,6 +97,20 @@ fn handle_fv_std_inner(
                 &ast_type_to_vir_type(return_typ),
                 exprx,
             ))
+        }
+        s if s == INVARIANT => {
+            assert!(
+                arguments.len() == 1,
+                "Expected function `invariant` from `noir_fv_std` to have exactly one argument"
+            );
+
+            let empty_block = SpannedTyped::new(
+                &build_span_no_id("Invariant placeholder block".to_string(), Some(location)),
+                &make_unit_vir_type(),
+                ExprX::Block(Arc::new(Vec::new()), None),
+            );
+
+            Some(wrap_with_ghost_block(empty_block, Some(location)))
         }
 
         _ => None,
