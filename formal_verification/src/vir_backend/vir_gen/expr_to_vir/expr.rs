@@ -622,6 +622,10 @@ fn ast_call_to_vir_expr(
         return expr;
     }
 
+    if let Some(expr) = try_handle_builtin_call(call_expr) {
+        return expr;
+    }
+
     let Expression::Ident(function_ident) = call_expr.func.as_ref() else {
         unreachable!("Expected functions to be presented with identifiers");
     };
@@ -642,24 +646,69 @@ fn ast_call_to_vir_expr(
         Arc::new(arguments),
     );
 
+    let call_description = format!(
+        "Function call {} with arguments {}",
+        function_ident.name,
+        call_expr
+            .arguments
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
+
+    let span = match ast_definition_to_id(&function_ident.definition) {
+        Some(def_id) => build_span(def_id, call_description, Some(call_expr.location)),
+        None => build_span_no_id(call_description, Some(call_expr.location)),
+    };
+
     SpannedTyped::new(
-        &build_span(
-            ast_definition_to_id(&function_ident.definition).expect("Functions must have an id"),
-            format!(
-                "Function call {} with arguments {}",
-                function_ident.name,
-                call_expr
-                    .arguments
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Some(call_expr.location),
-        ),
+        &span,
         &ast_type_to_vir_type(&call_expr.return_type),
         exprx,
     )
+}
+
+fn try_handle_builtin_call(call_expr: &Call) -> Option<Expr> {
+    let Expression::Ident(function_ident) = call_expr.func.as_ref() else {
+        return None;
+    };
+    let Definition::Builtin(name) = &function_ident.definition else { return None };
+
+    match name.as_str() {
+        "len" | "array_len" => builtin_len(call_expr),
+        _ => None,
+    }
+}
+
+fn builtin_len(call_expr: &Call) -> Option<Expr> {
+    assert!(
+        call_expr.arguments.len() == 1,
+        "Expected builtin `len` to receive a single argument"
+    );
+
+    let arg_expr = &call_expr.arguments[0];
+    let Some(arg_type) = arg_expr.return_type() else {
+        return None;
+    };
+
+    let array_length = match arg_type.as_ref() {
+        Type::Array(len, _) => *len,
+        _ => return None,
+    };
+
+    let len_bigint = BigInt::from(array_length as i64);
+    let exprx = ExprX::Const(Constant::Int(len_bigint));
+    let span = build_span_no_id(
+        format!("Builtin len call returning {}", array_length),
+        Some(call_expr.location),
+    );
+
+    Some(SpannedTyped::new(
+        &span,
+        &ast_type_to_vir_type(&call_expr.return_type),
+        exprx,
+    ))
 }
 
 fn ast_constrain_to_vir_expr(
