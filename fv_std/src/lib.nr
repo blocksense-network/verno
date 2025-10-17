@@ -6,6 +6,8 @@ pub fn assume(_x: bool) {}
 
 pub fn invariant(_x: bool) {}
 
+pub fn decreases<T>(_x: T) {}
+
 pub global U8_MIN: u8 = 0;
 pub global U8_MAX: u8 = 255;
 
