@@ -2,15 +2,12 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use noirc_errors::Location;
 use noirc_frontend::monomorphization::ast::{Call, Expression, GlobalId, Type};
-use vir::ast::{Expr, ExprX, Mode, SpannedTyped};
+use vir::ast::{Expr, ExprX, LoopInvariant, LoopInvariantKind, Mode, SpannedTyped};
 
 use crate::vir_backend::vir_gen::{
     build_span_no_id,
     expr_to_vir::{
-        expr::{
-            ast_definition_to_id, ast_expr_to_vir_expr, ast_ident_to_vir_var_ident,
-            wrap_with_ghost_block,
-        },
+        expr::{ast_expr_to_vir_expr, wrap_with_ghost_block},
         types::{ast_type_to_vir_type, make_unit_vir_type},
     },
 };
@@ -21,6 +18,8 @@ static ASSUME: &str = "assume";
 pub static OLD: &str = "old";
 /// The function `invariant()` from `fv_std_lib`
 pub static INVARIANT: &str = "invariant";
+/// The function `decreases()` from `fv_std_lib`
+pub static DECREASES: &str = "decreases";
 
 /// Handles function calls from the `fv_std` library and converts them to special VIR expressions.
 pub fn handle_fv_std_call(
@@ -112,7 +111,63 @@ fn handle_fv_std_inner(
 
             Some(wrap_with_ghost_block(empty_block, Some(location)))
         }
+        s if s == DECREASES => {
+            assert!(
+                arguments.len() == 1,
+                "Expected function `decreases` from `noir_fv_std` to have exactly one argument"
+            );
+
+            let empty_block = SpannedTyped::new(
+                &build_span_no_id("Decreases placeholder block".to_string(), Some(location)),
+                &make_unit_vir_type(),
+                ExprX::Block(Arc::new(Vec::new()), None),
+            );
+
+            Some(wrap_with_ghost_block(empty_block, Some(location)))
+        }
 
         _ => None,
     }
+}
+
+pub fn loop_invariant_from_call(
+    call_expr: &Call,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Option<LoopInvariant> {
+    let Expression::Ident(function_ident) = call_expr.func.as_ref() else {
+        return None;
+    };
+
+    if function_ident.name.as_str() != INVARIANT {
+        return None;
+    }
+
+    assert!(
+        call_expr.arguments.len() == 1,
+        "Expected function `invariant` from `noir_fv_std` to have exactly one argument"
+    );
+
+    let condition_expr = ast_expr_to_vir_expr(&call_expr.arguments[0], Mode::Spec, globals);
+
+    Some(LoopInvariant { kind: LoopInvariantKind::InvariantAndEnsures, inv: condition_expr })
+}
+
+pub fn loop_decreases_from_call(
+    call_expr: &Call,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Option<Expr> {
+    let Expression::Ident(function_ident) = call_expr.func.as_ref() else {
+        return None;
+    };
+
+    if function_ident.name.as_str() != DECREASES {
+        return None;
+    }
+
+    assert!(
+        call_expr.arguments.len() == 1,
+        "Expected function `decreases` from `noir_fv_std` to have exactly one argument"
+    );
+
+    Some(ast_expr_to_vir_expr(&call_expr.arguments[0], Mode::Spec, globals))
 }
