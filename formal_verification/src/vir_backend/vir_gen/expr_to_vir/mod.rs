@@ -4,6 +4,7 @@ use noirc_errors::Location;
 use noirc_frontend::monomorphization::ast::{Expression, LValue, Literal};
 use vir::ast::VarIdent;
 
+pub mod builtins;
 pub mod expr;
 pub mod params;
 pub mod std_functions;
