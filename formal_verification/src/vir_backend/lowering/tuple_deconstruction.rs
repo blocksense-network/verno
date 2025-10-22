@@ -16,58 +16,107 @@ fn fix_tuple_deconstruction(function: &mut Function) {
 /// - This function rewrites the inner block, and
 /// - Afterwards flattens it into the outer block
 fn fix_tuple_deconstruction_expression(expression: &mut Expression) {
-    if let Expression::Block(outer_block) = expression {
-        let mut blocks_to_be_flattened: Vec<(usize, Vec<Expression>)> = Vec::new();
-
-        // NOTE: enumeration done beforehand to keep real original indices
-        outer_block
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(i, expression)| {
-                if let Expression::Block(inner_expressions) = expression {
-                    Some((i, inner_expressions))
-                } else {
-                    None
-                }
-            })
-            .for_each(|(i, expressions)| {
-                let let_exprs_for_deconstruct_tuple: Option<usize> = expressions
-                    .first()
-                    .and_then(|first_expression| match first_expression {
-                        Expression::Let(Let { name, expression, .. }) => Some((name, expression)),
-                        _ => None,
-                    })
-                    .and_then(
-                        |(name, expression)| if *name == "_" { Some(expression) } else { None },
-                    )
-                    .and_then(|expression| {
-                        let ty = expression.return_type()?;
-                        match ty.as_ref() {
-                            Type::Tuple(tuple_vec) => Some(tuple_vec.len()),
-                            _ => None,
-                        }
-                    });
-
-                if let Some(exprs_len) = let_exprs_for_deconstruct_tuple {
-                    for expr in expressions[1..=exprs_len].iter_mut() {
-                        assert!(matches!(expr, Expression::Let(..)),
-                            "Expected to have a follow up auto generated let expressions after tuple deconstruct assignment");
-                        if let Expression::Let(let_expr) = expr {
-                            fix_rhs_tuple_indexing(let_expr);
-                        }
-                    }
-                    blocks_to_be_flattened.push((i, expressions.clone()));
-                }
-            });
-
-        // Flatten marked blocks into the outer block
-        let mut offset = 0;
-        blocks_to_be_flattened.into_iter().for_each(|(original_index, expressions)| {
-            let added_expressions_count = expressions.len();
-            outer_block.splice(original_index + offset..original_index + offset + 1, expressions);
-            offset = offset + added_expressions_count - 1;
-        });
+    println!("Visiting expression: {}", expression);
+    match expression {
+        Expression::Block(expressions) => {
+            flatten_blocks_made_of_tuple_deconstruction_expressions(expressions)
+        }
+        Expression::Unary(unary) => fix_tuple_deconstruction_expression(&mut unary.rhs),
+        Expression::Binary(binary) => {
+            fix_tuple_deconstruction_expression(&mut binary.lhs);
+            fix_tuple_deconstruction_expression(&mut binary.rhs);
+        }
+        Expression::Index(index) => {
+            fix_tuple_deconstruction_expression(&mut index.collection);
+            fix_tuple_deconstruction_expression(&mut index.index);
+        }
+        Expression::Cast(cast) => fix_tuple_deconstruction_expression(&mut cast.lhs),
+        Expression::For(for_loop) => fix_tuple_deconstruction_expression(&mut for_loop.block),
+        Expression::Loop(expression) => fix_tuple_deconstruction_expression(expression),
+        Expression::While(while_loop) => fix_tuple_deconstruction_expression(&mut while_loop.body),
+        Expression::If(if_expr) => {
+            fix_tuple_deconstruction_expression(&mut if_expr.consequence);
+            if let Some(alt) = if_expr.alternative.as_mut() {
+                fix_tuple_deconstruction_expression(alt);
+            }
+        }
+        Expression::Match(match_expr) => (), // TODO(totel): Currently not supported in the VIR gen module
+        Expression::Tuple(expressions) => {
+            expressions.iter_mut().for_each(|expr| fix_tuple_deconstruction_expression(expr));
+        }
+        Expression::ExtractTupleField(expression, _) => {
+            fix_tuple_deconstruction_expression(expression)
+        }
+        Expression::Call(call) => {
+            call.arguments.iter_mut().for_each(|expr| fix_tuple_deconstruction_expression(expr));
+        }
+        Expression::Let(let_expr) => fix_tuple_deconstruction_expression(&mut let_expr.expression),
+        Expression::Constrain(expression, location, rhs) => {
+            fix_tuple_deconstruction_expression(expression);
+            if let Some(rhs_inner) = rhs.as_mut() {
+                fix_tuple_deconstruction_expression(&mut rhs_inner.as_mut().0);
+            }
+        }
+        Expression::Assign(assign) => fix_tuple_deconstruction_expression(&mut assign.expression),
+        Expression::Semi(expression) => fix_tuple_deconstruction_expression(expression),
+        Expression::Clone(expression) => fix_tuple_deconstruction_expression(expression),
+        Expression::Drop(expression) => fix_tuple_deconstruction_expression(expression),
+        _ => (),
     }
+}
+
+fn flatten_blocks_made_of_tuple_deconstruction_expressions(block: &mut Vec<Expression>) {
+    let mut blocks_to_be_flattened: Vec<(usize, Vec<Expression>)> = Vec::new();
+
+    // NOTE: enumeration done beforehand to keep real original indices
+    block
+     .iter_mut()
+     .enumerate()
+     .filter_map(|(i, expression)| {
+        fix_tuple_deconstruction_expression(expression);
+         if let Expression::Block(inner_expressions) = expression {
+             Some((i, inner_expressions))
+         } else {
+             None
+         }
+     })
+     .for_each(|(i, expressions)| {
+        let let_exprs_for_deconstruct_tuple: Option<usize> = expressions
+            .first()
+            .and_then(|first_expression| match first_expression {
+                Expression::Let(Let { name, expression, .. }) => Some((name, expression)),
+                _ => None,
+            })
+            .and_then(
+                |(name, expression)| if *name == "_" { Some(expression) } else { None },
+            )
+           .and_then(|expression| {
+              let ty = expression.return_type()?;
+              match ty.as_ref() {
+               Type::Tuple(tuple_vec) => Some(tuple_vec.len()),
+               _ => None,
+               }
+           });
+
+        if let Some(exprs_len) = let_exprs_for_deconstruct_tuple {
+            for expr in expressions[1..=exprs_len].iter_mut() {
+                assert!(matches!(expr, Expression::Let(..)),
+                    "Expected to have a follow up auto generated let expressions after tuple deconstruct assignment");
+                if let Expression::Let(let_expr) = expr {
+                    fix_rhs_tuple_indexing(let_expr);
+                }
+            }
+            blocks_to_be_flattened.push((i, expressions.clone()));
+        }
+    });
+
+    // Flatten marked blocks into the outer block
+    let mut offset = 0;
+    blocks_to_be_flattened.into_iter().for_each(|(original_index, expressions)| {
+        let added_expressions_count = expressions.len();
+        block.splice(original_index + offset..original_index + offset + 1, expressions);
+        offset = offset + added_expressions_count - 1;
+    });
 }
 
 fn fix_rhs_tuple_indexing(expr: &mut Let) {
