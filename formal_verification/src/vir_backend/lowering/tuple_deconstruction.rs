@@ -16,7 +16,6 @@ fn fix_tuple_deconstruction(function: &mut Function) {
 /// - This function rewrites the inner block, and
 /// - Afterwards flattens it into the outer block
 fn fix_tuple_deconstruction_expression(expression: &mut Expression) {
-    println!("Visiting expression: {}", expression);
     match expression {
         Expression::Block(expressions) => {
             flatten_blocks_made_of_tuple_deconstruction_expressions(expressions)
