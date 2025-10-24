@@ -1,33 +1,13 @@
 # Limitations
 
-As a prototype, Verno has certain limitations and does not yet support some features of Noir. The following features are currently unsupported:
-* **Mutable references** as function parameters
+Verno still omits a handful of Noir features. The following constructs remain unsupported today:
+
 * **Lambda functions**
-* **Standard library functions**
-* **Unconstrained functions**
+* **Standard library functions** that rely on runtime helpers beyond the formal-verification shim
 * **Vectors** (`Vec<T>`)
 * **Optional types** (`Option<T>`)
 
-These limitations may change as Verno evolves.
-
-These examples show the errors produced when using unsupported features in Verno.
-
-## Mutable Reference Parameters
-```rust,ignore
-fn main() {
-    let mut x = 5;
-    nullify(&mut x);
-    assert(x == 0);
-}
-
-fn nullify(x: &mut u32) {
-  *x = 0;
-}
-```
-Output after running `verno formal-verify`:
-```
-Error: Verification crashed!
-```
+These limitations may change as the toolchain evolves, so check this page when upgrading to a new release. The examples below illustrate the current verifier behaviour when the unsupported features are used.
 
 ## Lambda Functions
 ```rust,ignore
@@ -67,31 +47,6 @@ The application panicked (crashed).
 Message:  called `Option::unwrap()` on a `None` value
 ```
 
-## Unconstrained Functions
-```rust,ignore
-#['requires(num < 100000)]
-#['ensures(result == num + 1)]
-fn main(num: u32) -> pub u32 {
-    let out = unsafe { 
-        increment(num) 
-    };
-    out
-}
-#['requires(num < 100000)]
-#['ensures(result == num + 1)]
-unconstrained fn increment(num: u32) -> u32 {
-    if num > 100000 {
-      0
-    } else {
-      num + 1
-    }
-}
-```
-Output:
-```
-The application panicked (crashed).
-Message:  internal error: entered unreachable code
-```
 ## Vectors
 ```rust,ignore
 fn main(x: Field, y: pub Field) {
@@ -110,7 +65,7 @@ Message:  internal error: entered unreachable code
 
 ## Optional Types
 ```rust,ignore
-fn main() {
+sfn main() {
     let none: Option<u32> = Option::none();
     assert(none.is_none());
     let some = Option::some(3);
@@ -129,4 +84,11 @@ error: assertion failed
 Error: Verification failed!
 ```
 
-Although some of these examples may seem easy to support we have decided to focus on completing our prototype sooner so we can get early feedback on the features that we think matter the most.
+## Recently Lifted Limitations
+
+Two previously missing capabilities are now available:
+
+- **Mutable references** are supported as function parameters. When writing specifications against mutable borrows, use `fv_std::old()` to refer to the incoming value (see the ghost functions guide for examples).
+- **Unconstrained Noir functions** participate in verification, provided their bodies introduce the right `#[requires]`/`#[ensures]` contracts and loop annotations (`invariant`, `decreases`, etc.). The dedicated *Unconstrained Noir Support* page outlines the required proof obligations.
+
+Although some of the unsupported features above might appear straightforward, we continue to prioritise end-to-end verification of core Noir programs before expanding the surface area further.

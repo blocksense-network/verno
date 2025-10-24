@@ -1,8 +1,8 @@
 # Verno Overview
 
-Verno is a tool for verifying the correctness of code written in Noir, built by Metacraft-labs. Building upon Microsoft's open-source verification framework Verus, we're able to prove functional correctness of constrained code, before it is ever run. Verno introduces no run-time checks, but instead uses computer-aided theorem proving to statically verify that executable code will always satisfy some user-provided specifications for all possible inputs.
+Verno is a tool for verifying the correctness of code written in Noir, built by Blocksense. Building upon Microsoft's open-source verification framework Verus, we're able to prove functional correctness of constrained code, before it is ever run. Verno introduces no run-time checks, but instead uses computer-aided theorem proving to statically verify that executable code will always satisfy some user-provided specifications for all possible inputs.
 
-Constrained Noir is not [Turing-complete](https://en.wikipedia.org/wiki/Turing_completeness) which simplifies proof writing. Noir’s deterministic nature eliminates the need for complex clauses which appear in other formal verification systems (like [invariants](https://viperproject.github.io/prusti-dev/user-guide/tour/loop_invariants.html?#loop-invariants) and [decrease clauses](https://verus-lang.github.io/verus/guide/reference-decreases.html?#the-decreases-measure)). Alongside the absence of a heap, we see Noir as a strong candidate for formal verification.
+Constrained Noir is not [Turing-complete](https://en.wikipedia.org/wiki/Turing_completeness) which simplifies proof writing. Many loops verify automatically thanks to determinism and fixed bounds, yet Verno also supports richer constructs—such as [loop invariants](https://viperproject.github.io/prusti-dev/user-guide/tour/loop_invariants.html?#loop-invariants) and [decrease clauses](https://verus-lang.github.io/verus/guide/reference-decreases.html?#the-decreases-measure)—when the program logic requires them. Alongside the absence of a heap, we see Noir as a strong candidate for formal verification.
 
 # This guide
 

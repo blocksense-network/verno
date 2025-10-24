@@ -8,6 +8,8 @@ Verno specifications are a superset of Noir's Boolean expressions. The key exten
 | [`... ==> ...`](specifications/quantifiers.md#logical-implication) | Right implication |
 | [`forall(...)`](specifications/quantifiers.md#forall) | Universal quantifier |
 | [`exists(...)`](specifications/quantifiers.md#exists) | Existential quantifier |
+| [`old(expr)`](#old-helper) | Value of `expr` at function/loop entry |
+| [`#['ghost]`](specifications/ghost_functions.md) | Declares a ghost-only helper |
 
 ## `result` Variable
 
@@ -94,3 +96,37 @@ After running `verno formal-verify`:
 ```
 Verification successful!
 ```
+## `old` Helper
+
+The `old(expr)` helper refers to the value of an expression at the start of a function (inside `ensures`) or at the start of each loop iteration (inside an `invariant`). This is particularly useful when specifying the behaviour of mutable references.
+
+```rust,ignore
+use fv_std::old;
+
+#['requires(*old(counter) < u32::MAX)]
+#['ensures(*counter == *old(counter) + 1)]
+fn bump(counter: &mut u32) {
+    *counter += 1;
+}
+```
+
+The `old` value is read-only: you can use it in specifications, but not assign to it.
+
+## Ghost Functions
+
+Functions annotated with `#['ghost]` are excluded from the compiled circuit and exist solely for specifications. They keep proof-oriented helpers separate from executable code.
+
+```rust,ignore
+#['ghost]
+fn is_power_of_2(x: i32) -> bool {
+    x > 0 & ((x & (x - 1)) == 0)
+}
+
+#['requires(is_power_of_2(x) & is_power_of_2(y))]
+#['ensures(is_power_of_2(result))]
+fn multiply_powers_of_2(x: i32, y: i32) -> pub i32 {
+    x * y
+}
+```
+
+Ghost helpers can call other ghost code and appear freely inside `requires`/`ensures` clauses.

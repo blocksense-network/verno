@@ -15,7 +15,7 @@ We recommend using [rustup](https://rustup.rs/) to install and manage your Rust 
 First, clone the Verno repository from GitHub:
 
 ```bash
-git clone https://github.com/metacraft-labs/verno.git
+git clone https://github.com/blocksense-network/verno.git
 cd verno
 ```
 
