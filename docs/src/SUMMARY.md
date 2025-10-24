@@ -8,5 +8,6 @@
     - [Ghost Functions](./specifications/ghost_functions.md)
     - [Recursion and Loops](./specifications/recursion_and_loops.md)
   - [Additional Features](./additional_features.md)
+  - [Unconstrained Noir Support](./unconstrained_support.md)
   - [Specification Syntax](./specification_syntax.md)
   - [Limitations](./limitations.md)
