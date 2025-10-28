@@ -52,15 +52,7 @@ pub fn compile_and_build_vir_krate(
     crate_id: CrateId,
     options: &CompileOptions,
 ) -> CompilationResult<Krate> {
-    modified_compile_main(context, crate_id, options)
-}
-
-fn modified_compile_main(
-    context: &mut Context,
-    crate_id: CrateId,
-    options: &CompileOptions,
-) -> CompilationResult<Krate> {
-    let (_, mut warnings) = check_crate(context, crate_id, options)?;
+    let (_, warnings) = check_crate(context, crate_id, options)?;
 
     let main = context.get_main_function(&crate_id).ok_or_else(|| {
         let err = CustomDiagnostic::from_message(
@@ -70,8 +62,41 @@ fn modified_compile_main(
         vec![err]
     })?;
 
-    let compiled_program =
-        modified_compile_no_check(context, options, main).map_err(|error| match error {
+    modified_compile_for_entry_internal(context, crate_id, main, options, false, warnings)
+}
+
+/// The crate that is being provided must have been "checked" and the warnings/errors have been reported
+pub fn compile_and_build_vir_for_entry_prechecked(
+    context: &mut Context,
+    crate_id: CrateId,
+    entry_function: node_interner::FuncId,
+    options: &CompileOptions,
+) -> CompilationResult<Krate> {
+    modified_compile_for_entry_internal(
+        context,
+        crate_id,
+        entry_function,
+        options,
+        false, // Because the warnings have been reported we don't have to "check" the crate again
+        Vec::new(),
+    )
+}
+
+fn modified_compile_for_entry_internal(
+    context: &mut Context,
+    crate_id: CrateId,
+    entry_function: node_interner::FuncId,
+    options: &CompileOptions,
+    run_check: bool,
+    mut warnings: Vec<CustomDiagnostic>,
+) -> CompilationResult<Krate> {
+    if run_check {
+        let (_, new_warnings) = check_crate(context, crate_id, options)?;
+        warnings = new_warnings;
+    }
+
+    let compiled_program = modified_compile_no_check(context, options, entry_function).map_err(
+        |error| match error {
             CompilationErrorBundle::CompileError(compile_error) => vec![compile_error.into()],
             CompilationErrorBundle::FvError(fv_monomorphization_error) => {
                 vec![fv_monomorphization_error.into()]
@@ -85,7 +110,8 @@ fn modified_compile_main(
             CompilationErrorBundle::ResolverError(resolver_error) => {
                 vec![CustomDiagnostic::from(&resolver_error)]
             }
-        })?;
+        },
+    )?;
 
     let compilation_warnings = vecmap(compiled_program.warnings.clone(), CustomDiagnostic::from);
     if options.deny_warnings && !compilation_warnings.is_empty() {

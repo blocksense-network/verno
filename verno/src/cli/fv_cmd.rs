@@ -1,15 +1,34 @@
-use clap::Args;
-use formal_verification::{
-    driver::compilation_pipeline::compile_and_build_vir_krate, venir_communication::venir_verify,
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
 };
-use nargo::{ops::report_errors, package::CrateName, prepare_package, workspace::Workspace};
+
+use clap::Args;
+use fm::{FILE_EXTENSION, FileId, NormalizePath};
+use formal_verification::{
+    driver::compilation_pipeline::{
+        compile_and_build_vir_for_entry_prechecked, compile_and_build_vir_krate,
+    },
+    venir_communication::venir_verify,
+};
+use nargo::{
+    ops::report_errors,
+    package::{CrateName, Package},
+    prepare_package,
+    workspace::Workspace,
+};
 use nargo_cli::{cli::compile_cmd::parse_workspace, errors::CliError};
 use nargo_toml::PackageSelection;
-use noirc_driver::{CompileOptions, link_to_debug_crate};
-use noirc_frontend::debug::DebugInstrumenter;
+use noirc_driver::{CompileOptions, check_crate, link_to_debug_crate};
+use noirc_frontend::{
+    debug::DebugInstrumenter,
+    graph::CrateId,
+    hir::{Context, ParsedFiles},
+    node_interner::FuncId,
+};
 use vir::ast::Krate;
 
-use super::cli_components::{LockType, WorkspaceCommand};
+use super::cli_components::{LockType, WorkspaceCommand, parse_path};
 
 /// Perform formal verification on a program
 #[derive(Debug, Clone, Args)]
@@ -21,6 +40,14 @@ pub struct FormalVerifyCommand {
     // This is necessary for compiling packages
     #[clap(flatten)]
     compile_options: CompileOptions,
+
+    /// Verify every function defined in the provided Noir source file
+    #[arg(
+        value_name = "NOIR_FILE",
+        help = "Path to a Noir source file whose functions should be verified (works for libraries without `main`). Use `--program-dir` or run inside the package so the file can be resolved.",
+        value_parser = parse_path
+    )]
+    target_path: Option<PathBuf>,
 
     /// Emit debug information for the intermediate Verus VIR to stdout
     #[arg(long, hide = true)]
@@ -69,35 +96,200 @@ impl WorkspaceCommand for FormalVerifyCommand {
 
 pub(crate) fn run(args: FormalVerifyCommand, workspace: Workspace) -> Result<(), CliError> {
     let (workspace_file_manager, parsed_files) = parse_workspace(&workspace, None);
-    let binary_packages = workspace.into_iter().filter(|package| package.is_binary());
+    if let Some(target_path) = args.target_path.clone() {
+        verify_functions_in_file(
+            &args,
+            &workspace,
+            &workspace_file_manager,
+            &parsed_files,
+            target_path.as_path(),
+        )
+    } else {
+        verify_workspace_binaries(&args, &workspace, &workspace_file_manager, &parsed_files)
+    }
+}
 
-    for package in binary_packages {
+fn verify_workspace_binaries(
+    args: &FormalVerifyCommand,
+    workspace: &Workspace,
+    workspace_file_manager: &fm::FileManager,
+    parsed_files: &ParsedFiles,
+) -> Result<(), CliError> {
+    let mut verified_any = false;
+
+    for package in workspace.members.iter().filter(|package| package.is_binary()) {
         let (mut context, crate_id) =
-            prepare_package(&workspace_file_manager, &parsed_files, package);
-        link_to_debug_crate(&mut context, crate_id);
-        context.debug_instrumenter = DebugInstrumenter::default();
-        context.package_build_path = workspace.package_build_path(package);
+            prepare_package(workspace_file_manager, parsed_files, package);
+        configure_context(&mut context, workspace, package, crate_id);
 
         let krate: Krate = report_errors(
             compile_and_build_vir_krate(&mut context, crate_id, &args.compile_options),
-            &workspace_file_manager,
+            workspace_file_manager,
             args.compile_options.deny_warnings,
             true,
         )?;
 
-        // Shared post-processing
-        if args.show_vir {
-            println!("Generated VIR:");
-            println!("{:#?}", krate);
-        }
+        maybe_print_vir(args.show_vir, &krate);
 
         venir_verify(
             krate,
-            &workspace_file_manager,
+            workspace_file_manager,
+            args.compile_options.deny_warnings,
+            &args.venir_flags,
+        )?;
+
+        verified_any = true;
+    }
+
+    if verified_any {
+        Ok(())
+    } else {
+        Err(CliError::Generic(
+            "no binary packages with a `main` function were found; provide a Noir file path or point `--program-dir` at a binary crate".to_string(),
+        ))
+    }
+}
+
+fn verify_functions_in_file(
+    args: &FormalVerifyCommand,
+    workspace: &Workspace,
+    workspace_file_manager: &fm::FileManager,
+    parsed_files: &ParsedFiles,
+    target_path: &Path,
+) -> Result<(), CliError> {
+    let normalized_target = target_path.normalize();
+
+    if normalized_target.extension() != Some(OsStr::new(FILE_EXTENSION)) {
+        return Err(CliError::Generic(format!(
+            "expected Noir source file with .{} extension, received `{}`",
+            FILE_EXTENSION,
+            normalized_target.display()
+        )));
+    }
+
+    let package = find_enclosing_package(workspace, &normalized_target).ok_or_else(|| {
+        CliError::Generic(format!(
+            "`{}` does not belong to any package in the current workspace",
+            normalized_target.display()
+        ))
+    })?;
+
+    let _ = workspace_file_manager.name_to_id(normalized_target.clone()).ok_or_else(|| {
+        CliError::Generic(format!(
+            "file `{}` is not part of the selected workspace; ensure it is included in the package",
+            normalized_target.display()
+        ))
+    })?;
+
+    let (mut context, crate_id) = prepare_package(workspace_file_manager, parsed_files, package);
+    configure_context(&mut context, workspace, package, crate_id);
+
+    let comp_result = check_crate(&mut context, crate_id, &args.compile_options);
+
+    report_errors(
+        comp_result,
+        workspace_file_manager,
+        args.compile_options.deny_warnings,
+        true,
+    )?;
+
+    let mut functions_to_verify =
+        collect_functions_defined_in_file(&context, crate_id, &normalized_target);
+    if functions_to_verify.is_empty() {
+        return Err(CliError::Generic(format!(
+            "no verifiable functions were found in `{}`",
+            normalized_target.display()
+        )));
+    }
+
+    functions_to_verify.sort_by(|lhs, rhs| {
+        function_sort_key(&context, lhs).cmp(&function_sort_key(&context, rhs))
+    });
+
+    for func_id in functions_to_verify {
+        let function_name = context.fully_qualified_function_name(&crate_id, &func_id);
+        println!("Verifying `{function_name}`...");
+
+        let krate: Krate = report_errors(
+            compile_and_build_vir_for_entry_prechecked(
+                &mut context,
+                crate_id,
+                func_id,
+                &args.compile_options,
+            ),
+            workspace_file_manager,
+            args.compile_options.deny_warnings,
+            true,
+        )?;
+
+        maybe_print_vir(args.show_vir, &krate);
+
+        venir_verify(
+            krate,
+            workspace_file_manager,
             args.compile_options.deny_warnings,
             &args.venir_flags,
         )?;
     }
 
     Ok(())
+}
+
+fn configure_context(
+    context: &mut Context,
+    workspace: &Workspace,
+    package: &Package,
+    crate_id: CrateId,
+) {
+    link_to_debug_crate(context, crate_id);
+    context.debug_instrumenter = DebugInstrumenter::default();
+    context.package_build_path = workspace.package_build_path(package);
+}
+
+fn maybe_print_vir(show_vir: bool, krate: &Krate) {
+    if show_vir {
+        println!("Generated VIR:");
+        println!("{:#?}", krate);
+    }
+}
+
+fn function_sort_key(context: &Context, func_id: &FuncId) -> (FileId, u32, String) {
+    let location = context.def_interner.function_meta(func_id).name.location;
+    let span = location.span;
+    (location.file, span.start(), context.def_interner.function_name(func_id).to_string())
+}
+
+fn collect_functions_defined_in_file(
+    context: &Context,
+    crate_id: CrateId,
+    target_path: &Path,
+) -> Vec<FuncId> {
+    let normalized_target = target_path.normalize();
+
+    let Some(def_map) = context.def_map(&crate_id) else {
+        return Vec::new();
+    };
+
+    def_map
+        .modules()
+        .iter()
+        .flat_map(|(_, module)| module.value_definitions())
+        .filter_map(|definition| definition.as_function())
+        .filter(|func_id| {
+            let meta = context.def_interner.function_meta(func_id);
+            context
+                .file_manager
+                .path(meta.name.location.file)
+                .map(|path| path.normalize() == normalized_target)
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+fn find_enclosing_package<'a>(workspace: &'a Workspace, target: &Path) -> Option<&'a Package> {
+    workspace
+        .members
+        .iter()
+        .filter(|package| target.starts_with(package.root_dir.normalize()))
+        .max_by_key(|package| package.root_dir.components().count())
 }

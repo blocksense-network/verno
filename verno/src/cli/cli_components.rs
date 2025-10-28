@@ -74,7 +74,7 @@ where
 }
 
 /// Parses a path and turns it into an absolute one by joining to the current directory.
-fn parse_path(path: &str) -> Result<PathBuf, String> {
+pub(crate) fn parse_path(path: &str) -> Result<PathBuf, String> {
     use fm::NormalizePath;
     let mut path: PathBuf = path.parse().map_err(|e| format!("failed to parse path: {e}"))?;
     if !path.is_absolute() {
