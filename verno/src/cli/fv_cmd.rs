@@ -186,12 +186,7 @@ fn verify_functions_in_file(
 
     let comp_result = check_crate(&mut context, crate_id, &args.compile_options);
 
-    report_errors(
-        comp_result,
-        workspace_file_manager,
-        args.compile_options.deny_warnings,
-        true,
-    )?;
+    report_errors(comp_result, workspace_file_manager, args.compile_options.deny_warnings, true)?;
 
     let mut functions_to_verify =
         collect_functions_defined_in_file(&context, crate_id, &normalized_target);
@@ -282,6 +277,17 @@ fn collect_functions_defined_in_file(
                 .path(meta.name.location.file)
                 .map(|path| path.normalize() == normalized_target)
                 .unwrap_or(false)
+        })
+        .filter(|func_id| {
+            let function_name = context.fully_qualified_function_name(&crate_id, &func_id);
+            // NOTE: Skipping generic functions because our architecture doesn't allow us
+            // to verify non-instantiated generic functions.
+            if context.def_interner.function_meta(&func_id).typ.generic_count() > 0 {
+                println!("Skipping `{function_name}` because it's generic...");
+                false
+            } else {
+                true
+            }
         })
         .collect()
 }
