@@ -646,6 +646,22 @@ fn update_globals_if_needed(
             .interner()
             .get_all_globals()
             .iter()
+            .filter(|global_info| {
+                // NOTE(totel): If we are verifying a file with an entry point other than `main` we have to make
+                // sure that we can build the fully qualified path name for the globals.
+                // I believe because the current crate may not be root some mismatch happens when
+                // pulling all globals from the interner. Therefore we skip the globals that are
+                // not accessable from our current crate.
+                let module_id =
+                    ModuleId { krate: global_info.crate_id, local_id: global_info.local_id };
+                module_id.krate == current_func_crate_id
+                    || find_dependencies_helper(
+                        crate_graph,
+                        &current_func_crate_id,
+                        &module_id.krate,
+                    )
+                    .is_some()
+            })
             .map(|global_info| {
                 let module_id =
                     ModuleId { krate: global_info.crate_id, local_id: global_info.local_id };
@@ -675,4 +691,31 @@ fn update_globals_if_needed(
 
         *last_crate_id = Some(current_func_crate_id);
     }
+}
+
+// Function which was copied from Noir. For some reason this function is `pub(crate)`
+// instead of `pub` even though you can remake it from using the public api of the CrateGraph.
+fn find_dependencies_helper(
+    crate_graph: &CrateGraph,
+    crate_id: &CrateId,
+    target_crate_id: &CrateId,
+) -> Option<Vec<String>> {
+    crate_graph[crate_id]
+        .dependencies
+        .iter()
+        .find_map(|dep| {
+            if &dep.crate_id == target_crate_id { Some(vec![dep.name.to_string()]) } else { None }
+        })
+        .or_else(|| {
+            crate_graph[crate_id].dependencies.iter().find_map(|dep| {
+                if let Some(mut path) =
+                    find_dependencies_helper(crate_graph, &dep.crate_id, target_crate_id)
+                {
+                    path.insert(0, dep.name.to_string());
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+        })
 }
