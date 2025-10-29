@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     ffi::OsStr,
     path::{Path, PathBuf},
 };
@@ -23,7 +24,7 @@ use noirc_driver::{CompileOptions, check_crate, link_to_debug_crate};
 use noirc_frontend::{
     debug::DebugInstrumenter,
     graph::CrateId,
-    hir::{Context, ParsedFiles},
+    hir::{Context, ParsedFiles, def_map::ModuleDefId},
     node_interner::FuncId,
 };
 use vir::ast::Krate;
@@ -265,31 +266,45 @@ fn collect_functions_defined_in_file(
         return Vec::new();
     };
 
-    def_map
-        .modules()
-        .iter()
-        .flat_map(|(_, module)| module.value_definitions())
-        .filter_map(|definition| definition.as_function())
-        .filter(|func_id| {
-            let meta = context.def_interner.function_meta(func_id);
-            context
-                .file_manager
-                .path(meta.name.location.file)
-                .map(|path| path.normalize() == normalized_target)
-                .unwrap_or(false)
-        })
-        .filter(|func_id| {
-            let function_name = context.fully_qualified_function_name(&crate_id, &func_id);
-            // NOTE: Skipping generic functions because our architecture doesn't allow us
-            // to verify non-instantiated generic functions.
-            if context.def_interner.function_meta(&func_id).typ.generic_count() > 0 {
-                println!("Skipping `{function_name}` because it's generic...");
-                false
-            } else {
-                true
+    let mut func_ids_from_file: Vec<FuncId> = Vec::new();
+    let mut queue_modules =
+        VecDeque::from_iter(def_map.modules().iter().map(|(_, module_data)| module_data));
+
+    while let Some(value) = queue_modules.pop_front() {
+        for module_def_id in value.value_definitions() {
+            match module_def_id {
+                ModuleDefId::ModuleId(module_id) => {
+                    // Also iterate over all functions in child modules
+                    queue_modules.push_back(module_id.module(&context.def_maps))
+                }
+                ModuleDefId::FunctionId(func_id) => {
+                    let meta = context.def_interner.function_meta(&func_id);
+                    if context
+                        .file_manager
+                        .path(meta.name.location.file)
+                        .map(|path| path.normalize() == normalized_target)
+                        .unwrap_or(false)
+                    {
+                        if context.def_interner.function_meta(&func_id).typ.generic_count() > 0 {
+                            let function_name =
+                                context.fully_qualified_function_name(&crate_id, &func_id);
+                            println!("Skipping `{function_name}` because it's generic...");
+                        } else {
+                            assert!(
+                                !func_ids_from_file.contains(&func_id),
+                                "The func_id {} was encountered twice which shouldn't be possible",
+                                func_id
+                            );
+                            func_ids_from_file.push(func_id);
+                        }
+                    }
+                }
+                _ => (),
             }
-        })
-        .collect()
+        }
+    }
+
+    func_ids_from_file
 }
 
 fn find_enclosing_package<'a>(workspace: &'a Workspace, target: &Path) -> Option<&'a Package> {
