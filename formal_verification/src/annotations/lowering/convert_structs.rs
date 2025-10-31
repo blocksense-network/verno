@@ -53,8 +53,10 @@ pub fn convert_struct_access_to_tuple_access(
             }
             ExprF::StructureAccess { expr, field } => {
                 if let Some(last_type) = last_important_type.take() {
-                    if let noirc_frontend::Type::DataType(struct_type, _) = last_type {
-                        if let Some((typ, _, index)) = struct_type.borrow().get_field(&field, &[]) {
+                    if let noirc_frontend::Type::DataType(struct_type, generic_args) = last_type {
+                        if let Some((typ, _, index)) =
+                            struct_type.borrow().get_field(&field, generic_args.as_slice())
+                        {
                             last_important_type = Some(typ);
                             Ok(SpannedExpr {
                                 ann: loc,
