@@ -237,7 +237,10 @@ fn configure_context(
     package: &Package,
     crate_id: CrateId,
 ) {
-    link_to_debug_crate(context, crate_id);
+    let debug_path = Path::new("__debug").join("lib.nr");
+    if context.file_manager.name_to_id(debug_path.clone()).is_some() {
+        link_to_debug_crate(context, crate_id);
+    }
     context.debug_instrumenter = DebugInstrumenter::default();
     context.package_build_path = workspace.package_build_path(package);
 }
