@@ -136,6 +136,61 @@ fn arithmetic_magic(x: i32, y: i32) -> i32 {
 ```
 This version successfully verifies.
 
+## Keeping up with Noir
+
+Verno reaches deep into the Noir compiler — it replaces `noirc_driver::compile_no_check`
+with its own pipeline and drives the monomorphiser by hand — so it is coupled to a specific
+Noir release far more tightly than an ordinary downstream consumer. All ten Noir
+dependencies are pinned to one immutable upstream tag in the workspace `Cargo.toml`.
+
+Three things exist to keep that pin from quietly rotting. Each is a CI job
+(`.github/workflows/ci.yml`) and each can be run by hand.
+
+```bash
+# 1. The pin is a single upstream release tag, and the lockfile agrees. Seconds, no build.
+./scripts/check-noir-pin.sh
+
+# ...and, additionally, how far behind upstream's newest release we are.
+./scripts/check-noir-pin.sh --check-drift
+
+# 2. It still builds, and the unit tests still pass.
+cargo check --workspace --all-targets --locked
+cargo test -p formal_verification --lib --locked
+
+# 3. The proof corpus still behaves as it did. Roughly two minutes for 135 programs.
+./scripts/run-corpus.py --baseline test_programs/corpus-baseline.json
+```
+
+Run them in that order after any change to the Noir pin. Step 3 is the one that matters
+most and the one that is easiest to skip: a compiler upgrade can break Verno *without*
+breaking the build. Moving from `v1.0.0-beta.13` to `v1.0.0-beta.26` turned up exactly such
+a case — upstream swapped `Type::Array`'s two fields from `(length, element)` to
+`(element, length)`, and since both are `Box<Type>` the compiler had nothing to say while
+twelve corpus programs started being rejected with a nonsensical type error.
+
+### Reading the corpus results
+
+`scripts/run-corpus.py` reports six outcomes, not pass/fail, because an SMT-backed prover
+does not fail cleanly:
+
+| Outcome | Meaning |
+|---|---|
+| `proved` | the solver discharged every obligation |
+| `not-proved` | the solver ran and rejected the program |
+| `timed-out` | the solver ran out of budget. **Never** a lost proof |
+| `unsupported` | the program uses a construct Verno does not implement (see the Limitations page). Does not move the proved/not-proved counts |
+| `no-solver` | the whole Noir → VIR pipeline completed but `venir` is not installed. A pass of the compiler-facing half of Verno — which is the half an upstream bump breaks |
+| `pipeline-error` | Verno failed before reaching the solver. This is where an unabsorbed upstream change lands |
+
+The resource limits are pinned in the script itself, and it refuses to compare two runs
+taken under different limits, so a baseline means the same thing on every machine. Its own
+classification rules are covered by `./scripts/run-corpus.py --self-test`, which needs no
+solver.
+
+`venir` and the Verus standard library are currently Linux-only, so on macOS every entry
+stops at `no-solver`. That is still a useful signal — it is the entire front end — but it is
+not a proof run, and the harness says so rather than reporting a pass.
+
 ## Conclusion
 
 Verno empowers developers to write safer, more reliable Noir programs.

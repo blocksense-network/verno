@@ -1,94 +1,101 @@
 # Limitations
 
-Verno still omits a handful of Noir features. The following constructs remain unsupported today:
+Verno does not yet cover all of Noir. This page lists what it does not cover, and it is
+kept in agreement with the code: every entry below corresponds to a specific place in the
+translator that refuses to continue, and each of those places names its construct in the
+message it prints.
 
-* **Lambda functions**
-* **Standard library functions** that rely on runtime helpers beyond the formal-verification shim
-* **Vectors** (`Vec<T>`)
-* **Optional types** (`Option<T>`)
+When Verno meets one of these, it stops with:
 
-These limitations may change as the toolchain evolves, so check this page when upgrading to a new release. The examples below illustrate the current verifier behaviour when the unsupported features are used.
-
-## Lambda Functions
-```rust,ignore
-#['ensures(result == x / 2)]
-fn main(x: u32) -> pub u32 {
-  let divide_by_2 = |val| val / 2; // Lambda function
-  divide_by_2(x)
-}
-```
-Output:
-```
-error: postcondition not satisfied
-  ┌─ src/main.nr:1:11
-  │
-1 │ #['ensures(result == x / 2)]
-  │           ---------------- failed this postcondition
-  │
-
-Error: Verification failed!
-```
-
-## Standard Library Functions
-```rust,ignore
-#['requires(x.lt(y))]
-#['ensures(result == x)]
-fn main(x: Field, y: pub Field) -> pub Field {
-    if x.lt(y) {
-      x
-    } else {
-      y
-    }
-}
-```
-Output:
 ```
 The application panicked (crashed).
-Message:  called `Option::unwrap()` on a `None` value
+Message:  not yet implemented: UNSUPPORTED: <the construct>
 ```
 
-## Vectors
-```rust,ignore
-fn main(x: Field, y: pub Field) {
-  let mut vector: Vec<Field> = Vec::new();
-  for i in 0..5 {
-    vector.push(i as Field);
-  }
-  assert(vector.len() == 5);
-}
-```
-Output:
-```
-The application panicked (crashed).
-Message:  internal error: entered unreachable code
-```
+The `UNSUPPORTED:` prefix is what the regression harness (`scripts/run-corpus.py`) matches
+on. It classifies such a run as **unsupported** rather than as a failed proof, so hitting a
+limitation does not move the proved/not-proved counts a version bump is judged against.
 
-## Optional Types
-```rust,ignore
-sfn main() {
-    let none: Option<u32> = Option::none();
-    assert(none.is_none());
-    let some = Option::some(3);
-    assert(some.unwrap() == 3);
-}
-```
-Output:
-```
-error: assertion failed
-  ┌─ src/main.nr:5:12
-  │
-5 │     assert(some.unwrap() == 3);
-  │            ------------------- assertion failed
-  │
+*Verified against Noir `v1.0.0-beta.26`.*
 
-Error: Verification failed!
-```
+## Unsupported constructs
 
-## Recently Lifted Limitations
+| Construct | Example | What happens |
+|---|---|---|
+| **Lambdas and function values** | `let f = \|x\| x / 2;` | `UNSUPPORTED: function types (lambdas, function values)` |
+| **Vectors** (`Vector`, formerly `Slice`) | see the note below | `UNSUPPORTED: vector types (Vec<T> / slices)`, `vector literals` |
+| **Strings** | `let s = "hello";` | `UNSUPPORTED: string literals` / `string types` |
+| **Format strings** | `f"{x}"` | `UNSUPPORTED: format-string literals` / `format-string types` |
+| **`match` expressions and enums** | `match c { ... }` | `UNSUPPORTED: match expressions and enums` |
+| **Unary negation of a non-constant value** | `-x` where `x` is a variable | `UNSUPPORTED: unary negation of a non-constant value` |
+| **Inclusive `for` ranges with non-constant bounds** | `for i in 0..=n` where `n` is a parameter | `UNSUPPORTED: an inclusive for range ... whose bounds are not compile-time constants` |
+| **Standard-library functions needing runtime helpers** beyond the verification shim | `x.lt(y)` | usually a panic inside the translator |
 
-Two previously missing capabilities are now available:
+Three entries deserve a note.
 
-- **Mutable references** are supported as function parameters. When writing specifications against mutable borrows, use `fv_std::old()` to refer to the incoming value (see the ghost functions guide for examples).
-- **Unconstrained Noir functions** participate in verification, provided their bodies introduce the right `#[requires]`/`#[ensures]` contracts and loop annotations (`invariant`, `decreases`, etc.). The dedicated *Unconstrained Noir Support* page outlines the required proof obligations.
+**Vectors.** Verno has never translated the compiler's variable-length collection type, and
+still does not. What changed is how you would reach it from Noir source: the old
+`std::collections::vec::Vec` was removed from the standard library (`Could not resolve
+'Vec' in path`), `[T; N]::as_slice` was removed, and what used to be `Type::Slice` in the
+compiler is now `Type::Vector`. No program written against current Noir was found that
+reaches Verno's vector paths at all, so the refusals below are reachable in principle — they
+are still in the translator, and named — but were not exercised against
+`v1.0.0-beta.26`. Treat this row as "unsupported, and currently also unreachable".
 
-Although some of the unsupported features above might appear straightforward, we continue to prioritise end-to-end verification of core Noir programs before expanding the surface area further.
+**Negation.** `-5` written as a literal is folded by the Noir compiler into a negative
+integer literal and is fully supported; it is only negation applied to a *value* at run
+time that is not.
+
+**Inclusive ranges.** `for i in a..=b` stopped being rewritten into an exclusive range and
+now reaches the monomorphised AST as written, since Noir `v1.0.0-beta.19`
+(noir-lang/noir#10567). When both bounds
+are compile-time constants, Verno unrolls the loop and handles the inclusive bound exactly,
+so `for i in 0..=4` works. When they are not, the loop is lowered to a synthetic `while`
+whose exit condition, decreases measure and invariant are all written for Noir's *exclusive*
+range semantics. Rather than approximate them — which would produce a *passing* proof of a
+loop the program does not contain — Verno refuses. Nothing about this is fundamental; it is
+three expressions in `vir_backend::vir_gen::expr_to_vir::expr` that need an inclusive
+variant.
+
+## Recently checked, and now supported
+
+These were re-checked against `v1.0.0-beta.26` because Noir changed them, and they work:
+
+- **Compound assignment** (`x += y`, `x *= y`). Noir stopped desugaring these in the parser
+  in `v1.0.0-beta.20` (noir-lang/noir#12123) and now does it during elaboration. Verno sees
+  the desugared form and is unaffected. (The same change silently broke the CodeTracer
+  tracer fork, so it was worth confirming rather than assuming.)
+- **Repeated array literals** (`[expr; N]`). Since `v1.0.0-beta.19` (noir-lang/noir#11279)
+  the monomorphiser no longer expands these into `N` copies; they arrive as a single
+  `Repeated` literal. Verno materialises them, so both the loop-unrolling constant
+  interpreter and VIR generation behave as they did before.
+- **Mutable references** as function parameters. Use `fv_std::old()` in a specification to
+  refer to the incoming value (see the ghost-functions guide).
+- **Unconstrained functions**, provided their bodies carry the right
+  `#['requires]`/`#['ensures]` contracts and loop annotations (`invariant`, `decreases`).
+  See *Unconstrained Noir Support*.
+
+## Things Noir itself rejects first
+
+These never reach Verno, so they are not Verno limitations:
+
+- **`enum` and `match`** are behind Noir's unstable `enums` feature and are rejected by the
+  compiler unless `-Zenums` is passed. Were the feature enabled, Verno would report
+  `UNSUPPORTED: match expressions and enums`.
+- **`while` loops in constrained code**: Noir requires a statically known iteration count in
+  constrained functions. Verno does support `while` in *unconstrained* functions.
+
+## Not yet re-measured
+
+- **`Option<T>`** was previously listed as unsupported, with an example that verified
+  *incorrectly* rather than crashing. Against `v1.0.0-beta.26` an `Option<u32>` program now
+  completes the whole Noir → VIR pipeline and reaches the solver, so the old "unsupported"
+  claim no longer describes what happens. Whether the resulting proof is *correct* has not
+  been established — that needs a run with a working solver — so `Option<T>` should be
+  treated as unverified rather than as either supported or unsupported.
+
+## Diagnostics that are bugs, not limitations
+
+A panic reading `internal error: entered unreachable code` is **not** a limitation. It means
+an invariant Verno relies on did not hold, and it should be reported. The regression harness
+deliberately does not fold these into the `unsupported` bucket, so that they cannot hide.
