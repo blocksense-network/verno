@@ -5,7 +5,10 @@ use std::{
 
 use fm::{FileId, FileManager, FileMap};
 use nargo_cli::errors::CliError;
-use noirc_errors::{CustomDiagnostic, DiagnosticKind, Location, Span, reporter::ReportedErrors};
+use noirc_errors::{
+    CustomDiagnostic, DiagnosticKind, Location, Span, call_stack::CallStack,
+    function_locations::FunctionLocations, reporter::ReportedErrors,
+};
 use serde::Deserialize;
 use vir::ast::Krate;
 
@@ -84,8 +87,14 @@ pub fn venir_verify(
         .sort_by_key(|diag| diag.secondaries.first().map(|label| label.location.span.start()));
 
     // Report errors from the verification process.
+    // `report_all` gained a `&FunctionLocations` argument since `beta.13`; it is used only
+    // to name the frames of a runtime call stack when a diagnostic carries one. Verno's
+    // diagnostics come from Venir/the SMT solver and never carry a Noir call stack, so an
+    // empty map is the correct value rather than a placeholder.
+    let function_locations = FunctionLocations::default();
     let reported_errors: ReportedErrors = noirc_errors::reporter::report_all(
         workspace_file_manager.as_file_map(),
+        &function_locations,
         &verification_diagnostics,
         deny_warnings,
         false,
@@ -174,7 +183,7 @@ fn smt_output_to_diagnostic(
             kind: DiagnosticKind::Warning,
             deprecated: false,
             unnecessary: false,
-            call_stack: Default::default(),
+            call_stack: CallStack::empty(),
         },
 
         SmtOutput::Note(message) => CustomDiagnostic {
@@ -185,7 +194,7 @@ fn smt_output_to_diagnostic(
             kind: DiagnosticKind::Info,
             deprecated: false,
             unnecessary: false,
-            call_stack: Default::default(),
+            call_stack: CallStack::empty(),
         },
 
         SmtOutput::AirMessage(crash_block) => {

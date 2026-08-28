@@ -9,7 +9,7 @@ use noirc_frontend::{
 };
 use thiserror::Error;
 
-use crate::vir_backend::vir_gen::typed_attrs_to_vir::signed_field_from_bigint_wrapping;
+use crate::bigint_bridge::to_noir_bigint;
 
 pub(crate) enum MonomorphizationErrorBundle {
     MonomorphizationError(MonomorphizationError),
@@ -61,7 +61,10 @@ impl From<TypeInferenceError> for MonomorphizationErrorBundle {
                 message: _,
             } => MonomorphizationErrorBundle::TypeError(
                 TypeCheckError::IntegerLiteralDoesNotFitItsType {
-                    expr: signed_field_from_bigint_wrapping(literal),
+                    // `IntegerLiteralDoesNotFitItsType.expr` used to be a `SignedField`;
+                    // it is a `num-bigint 0.5` `BigInt` now, so the literal crosses the
+                    // version boundary here. See `crate::bigint_bridge`.
+                    expr: to_noir_bigint(&literal),
                     ty: noirc_frontend::Type::Unit, // We present the range which is enough
                     range: {
                         match fit_into {

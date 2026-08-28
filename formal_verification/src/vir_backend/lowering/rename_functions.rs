@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use noirc_frontend::monomorphization::ast::FuncId;
 use noirc_frontend::monomorphization::ast::{
     Assign, Binary, Call, Cast, Definition, Expression, For, Function, Ident, LValue, Let, Literal,
     Match, MatchCase, Program, Unary, While,
 };
-use noirc_frontend::monomorphization::ast::FuncId;
 
 /// Ensure that every monomorphized function has a unique name. Noir tracks functions by their
 /// `FuncId`, but Venir keys definitions by name only. Without this pass, distinct instantiations
@@ -132,9 +132,15 @@ fn rename_in_lvalue(lvalue: &mut LValue, rename_map: &HashMap<FuncId, String>) {
 
 fn rename_in_literal(literal: &mut Literal, rename_map: &HashMap<FuncId, String>) {
     match literal {
-        Literal::Array(array) | Literal::Slice(array) => {
+        Literal::Array(array) | Literal::Vector(array) => {
             array.contents.iter_mut().for_each(|c| rename_in_expression(c, rename_map));
         }
+        // `[expr; N]`, no longer expanded by the monomorphiser since `v1.0.0-beta.19`.
+        // The element is a real expression and can contain calls, so it must be renamed
+        // like any other. This match is deliberately exhaustive: a catch-all here would
+        // let a future upstream literal variant pass through unrenamed and produce a VIR
+        // krate referring to a function name that no longer exists.
+        Literal::Repeated { element, .. } => rename_in_expression(element, rename_map),
         Literal::FmtStr(_, _, expr) => rename_in_expression(expr, rename_map),
         Literal::Integer(_, _, _) | Literal::Bool(_) | Literal::Unit | Literal::Str(_) => {}
     }

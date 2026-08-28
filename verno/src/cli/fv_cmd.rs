@@ -126,6 +126,7 @@ fn verify_workspace_binaries(
         let krate: Krate = report_errors(
             compile_and_build_vir_krate(&mut context, crate_id, &args.compile_options),
             workspace_file_manager,
+            parsed_files,
             args.compile_options.deny_warnings,
             true,
         )?;
@@ -187,7 +188,13 @@ fn verify_functions_in_file(
 
     let comp_result = check_crate(&mut context, crate_id, &args.compile_options);
 
-    report_errors(comp_result, workspace_file_manager, args.compile_options.deny_warnings, true)?;
+    report_errors(
+        comp_result,
+        workspace_file_manager,
+        parsed_files,
+        args.compile_options.deny_warnings,
+        true,
+    )?;
 
     let mut functions_to_verify =
         collect_functions_defined_in_file(&context, crate_id, &normalized_target);
@@ -214,6 +221,7 @@ fn verify_functions_in_file(
                 &args.compile_options,
             ),
             workspace_file_manager,
+            parsed_files,
             args.compile_options.deny_warnings,
             true,
         )?;
@@ -288,7 +296,17 @@ fn collect_functions_defined_in_file(
                         .map(|path| path.normalize() == normalized_target)
                         .unwrap_or(false)
                     {
-                        if context.def_interner.function_meta(&func_id).typ.generic_count() > 0 {
+                        // `Type::generic_count()` was removed upstream; `unwrap_forall` returns the
+                        // same binder list a generic function's type is wrapped in, and an
+                        // empty one for a non-generic function.
+                        if !context
+                            .def_interner
+                            .function_meta(&func_id)
+                            .typ
+                            .unwrap_forall()
+                            .0
+                            .is_empty()
+                        {
                             let function_name =
                                 context.fully_qualified_function_name(&crate_id, &func_id);
                             println!("Skipping `{function_name}` because it's generic...");

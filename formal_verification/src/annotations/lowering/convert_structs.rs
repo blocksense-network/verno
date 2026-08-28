@@ -19,7 +19,13 @@ pub fn convert_struct_access_to_tuple_access(
         match exprf {
             ExprF::Index { .. } => {
                 if let Some(last_type) = &last_important_type {
-                    if let noirc_frontend::Type::Array(_size, inner_type) = last_type {
+                    // `Type::Array`'s fields were swapped upstream in `v1.0.0-beta.21`
+                    // (noir-lang/noir#12489): it was `Array(N, E)` and is now `Array(E, N)`.
+                    // Both
+                    // fields are `Box<Type>`, so the change is invisible to the compiler —
+                    // reading them in the old order silently yields the array's *length*
+                    // where its element type belongs.
+                    if let noirc_frontend::Type::Array(inner_type, _size) = last_type {
                         last_important_type = Some(*inner_type.clone());
                         Ok(SpannedExpr { ann: loc, expr: Box::new(exprf) })
                     } else {
@@ -28,6 +34,7 @@ pub fn convert_struct_access_to_tuple_access(
                             expr_typ: last_type.to_string(),
                             expected_typ: String::from("array"),
                             expr_location: loc,
+                            similarly_named_types: Vec::new(),
                         }))
                     }
                 } else {
@@ -45,6 +52,7 @@ pub fn convert_struct_access_to_tuple_access(
                             expr_typ: last_type.to_string(),
                             expected_typ: String::from("tuple"),
                             expr_location: loc,
+                            similarly_named_types: Vec::new(),
                         }))
                     }
                 } else {
@@ -78,6 +86,7 @@ pub fn convert_struct_access_to_tuple_access(
                             expr_typ: last_type.to_string(),
                             expected_typ: String::from("structure"),
                             expr_location: loc,
+                            similarly_named_types: Vec::new(),
                         }))
                     }
                 } else {

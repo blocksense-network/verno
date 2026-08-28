@@ -4,6 +4,7 @@ use crate::vir_backend::vir_gen::expr_to_vir::types::ast_type_to_vir_type;
 use super::BuildingKrateError;
 use super::expr_to_vir::expr::func_body_to_vir_expr;
 use super::expr_to_vir::params::ast_param_to_vir_param;
+use crate::param_source::{ParamSources, locations_for};
 use crate::vir_backend::vir_gen::Attribute;
 use noirc_errors::Location;
 use noirc_frontend::monomorphization::ast::{Expression, Function, GlobalId, Type};
@@ -29,14 +30,28 @@ fn get_function_mode(is_ghost: bool) -> Mode {
     if is_ghost { Mode::Spec } else { Mode::Exec }
 }
 
-fn get_function_params(function: &Function, mode: Mode) -> Result<Params, BuildingKrateError> {
-    let locations: Vec<Location> =
-        function.func_sig.0.iter().map(|param| param.0.location()).collect();
+fn get_function_params(
+    function: &Function,
+    mode: Mode,
+    param_sources: &ParamSources,
+) -> Result<Params, BuildingKrateError> {
+    // These locations used to come from `function.func_sig.0`, which upstream removed in
+    // noir-lang/noir#11217. See `crate::param_source`. A parameter whose location is
+    // unknown gets a dummy one: the location only feeds the VIR span, so the cost is a
+    // less precise diagnostic, and it must not shorten the parameter list.
+    let locations = locations_for(param_sources, function.id, function.parameters.len());
     let params_as_vir: Vec<Param> = function
         .parameters
         .iter()
         .zip(locations)
-        .map(|(param, location)| ast_param_to_vir_param(param, location, mode, &function.name))
+        .map(|(param, location)| {
+            ast_param_to_vir_param(
+                param,
+                location.unwrap_or_else(Location::dummy),
+                mode,
+                &function.name,
+            )
+        })
         .collect();
 
     Ok(Arc::new(params_as_vir))
@@ -102,6 +117,7 @@ pub fn build_funx_with_ready_annotations(
     current_module: &Module,
     globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
     annotations: Vec<Attribute>,
+    param_sources: &ParamSources,
 ) -> Result<FunctionX, BuildingKrateError> {
     let mut is_ghost = false;
     let mut requires_annotations_inner = vec![];
@@ -119,7 +135,7 @@ pub fn build_funx_with_ready_annotations(
 
     let mode = get_function_mode(is_ghost);
 
-    let function_params = get_function_params(function, mode)?;
+    let function_params = get_function_params(function, mode, param_sources)?;
     let function_return_param = get_function_return_param(function, mode)?;
 
     let funx = FunctionX {

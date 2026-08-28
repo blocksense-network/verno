@@ -6,7 +6,7 @@ members = [
 resolver = "3"
 [workspace.package]
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 version = "0.1.0"
 authors = []
 license = "MIT"
@@ -20,24 +20,24 @@ console = { version = "0.16", features = ["std"] }
 fs2 = "0.4.3"
 
 # Noir compiler dependencies
-fm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "fm" }
-noirc_errors = { git = "https://github.com/noir-lang/noir.git" }
-noirc_evaluator = { git = "https://github.com/noir-lang/noir.git" }
-noirc_driver = { git = "https://github.com/noir-lang/noir.git", package = "noirc_driver" }
-noirc_frontend = { git = "https://github.com/noir-lang/noir.git", package = "noirc_frontend" }
-nargo_cli = { git = "https://github.com/noir-lang/noir.git", package = "nargo_cli" }
-nargo_toml = { git = "https://github.com/noir-lang/noir.git", package = "nargo_toml" }
-nargo = { git = "https://github.com/noir-lang/noir.git", package = "nargo" }
+fm = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "fm" }
+noirc_errors = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26" }
+noirc_evaluator = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26" }
+noirc_driver = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "noirc_driver" }
+noirc_frontend = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "noirc_frontend" }
+nargo_cli = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "nargo_cli" }
+nargo_toml = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "nargo_toml" }
+nargo = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "nargo" }
 
 # ACVM & FV-related crates
-acvm = { git = "https://github.com/noir-lang/noir.git"}
-bn254_blackbox_solver = { version = "1.0.0-beta.7", git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "bn254_blackbox_solver", default-features = false }
+acvm = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26"}
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "bn254_blackbox_solver", default-features = false }
 nom = "8.0"
 derive_more = { version = "2.0.1", features = ["deref", "from", "into", "debug"] }
 vir = { git = "https://github.com/Aristotelis2002/verus-lib", branch = "synced_main" }
 
 # Utility crates
-iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "iter-extended" }
+iter-extended = { git = "https://github.com/noir-lang/noir.git", tag = "v1.0.0-beta.26", package = "iter-extended" }
 
 # Build dependencies
 build-data = "0.3.3"
@@ -49,22 +49,16 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0"
 
 # Math
+# Verno and the Verus `vir` crate share `num-bigint 0.4`. Noir `v1.0.0-beta.26` is on
+# `0.5`, so the two majors resolve side by side and a handful of values have to be
+# converted between them; `formal_verification::bigint_bridge` is the only place that
+# happens. The `0.5` copy is named explicitly so those conversions are typed rather than
+# relying on whichever version happened to be in scope.
 num-bigint = "0.4"
+num-bigint-noir = { package = "num-bigint", version = "0.5" }
 num-traits = "0.2"
 
 # Error handling
 thiserror = "1.0.21"
-
-[patch.'https://github.com/noir-lang/noir.git']
-noirc_driver = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_driver" }
-noirc_frontend = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_frontend" }
-nargo_cli = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo_cli" }
-nargo_toml = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo_toml" }
-nargo = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "nargo" }
-noirc_errors = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_errors" }
-noirc_evaluator = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "noirc_evaluator" }
-fm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "fm" }
-acvm = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "acvm" }
-iter-extended = { git = "https://github.com/blocksense-network/noir.git", branch = "patched-master", package = "iter-extended" }
 
 [workspace.lints]

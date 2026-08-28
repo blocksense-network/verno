@@ -20,36 +20,35 @@
 //! In short, `mut` is removed from the parameter list, and a mutable shadowing
 //! `let` binding is inserted at the top of the function body.
 
-use noirc_errors::Location;
-use noirc_frontend::{
-    hir_def::stmt::HirPattern,
-    monomorphization::ast::{Definition, Expression, Function, Ident, IdentId, Let, Program},
+use noirc_frontend::monomorphization::ast::{
+    Definition, Expression, Function, Ident, IdentId, Let, Program,
 };
 
-pub fn demut_parameters(program: &mut Program) {
-    program.functions.iter_mut().for_each(demut_parameters_inner);
+use crate::param_source::{ParamSources, mut_locations_for};
+
+pub fn demut_parameters(program: &mut Program, param_sources: &ParamSources) {
+    program.functions.iter_mut().for_each(|function| {
+        demut_parameters_inner(function, param_sources);
+    });
 }
 
-fn demut_parameters_inner(function: &mut Function) {
-    insert_let_mut_exprs(function);
+fn demut_parameters_inner(function: &mut Function, param_sources: &ParamSources) {
+    insert_let_mut_exprs(function, param_sources);
     convert_mut_params_to_non_mut(function)
 }
 
-fn insert_let_mut_exprs(function: &mut Function) {
-    let mut_params_locations: Vec<Option<Location>> = function
-        .func_sig
-        .0
-        .iter()
-        .map(|(hir_pattern, ..)| match hir_pattern {
-            HirPattern::Mutable(_, location) => Some(*location),
-            _ => None,
-        })
-        .collect();
+fn insert_let_mut_exprs(function: &mut Function, param_sources: &ParamSources) {
+    // Which parameters are rebound is read below from `parameters` itself (`param.1`), as
+    // it always was; only the source location came from `func_sig`, which upstream removed
+    // in noir-lang/noir#11217 (`v1.0.0-beta.19`). It is now carried alongside the program —
+    // see `crate::param_source` — and is supplied only for parameters whose HIR pattern was
+    // a `HirPattern::Mutable`, which is exactly what `func_sig` used to yield here.
+    let param_locations = mut_locations_for(param_sources, function.id, function.parameters.len());
 
     function
         .parameters
         .iter()
-        .zip(mut_params_locations)
+        .zip(param_locations)
         .filter(|(param, _)| param.1) // is mut
         // Get parameter's local id, name, type and location
         .map(|(param, location)| (param.0, param.2.clone(), param.3.clone(), location))
@@ -79,13 +78,12 @@ fn insert_let_mut_exprs(function: &mut Function) {
 
 fn convert_mut_params_to_non_mut(function: &mut Function) {
     function.parameters.iter_mut().for_each(|param| {
-        param.1 = false; // Set mut to false 
+        param.1 = false; // Set mut to false
     });
 
-    function.func_sig.0.iter_mut().for_each(|param| {
-        if let HirPattern::Mutable(ref inner, _) = param.0 {
-            // Clone gets optimized away
-            param.0 = *inner.clone()
-        }
-    });
+    // The second half of this function used to strip the `HirPattern::Mutable` wrapper from
+    // the matching `func_sig` entry, so that the two records of "is this parameter mut"
+    // stayed in agreement. `func_sig` no longer exists (noir-lang/noir#11217), and the
+    // monomorphised parameter tuple above is now the only such record, so there is nothing
+    // left to keep in step.
 }

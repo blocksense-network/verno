@@ -4,16 +4,17 @@ use crate::annotations::lowering::inline_globals::inline_global_consts;
 use crate::annotations::typing::type_conversion::convert_mast_to_noir_type;
 use crate::annotations::typing::type_infer::{OptionalType, TypeInferenceError, type_infer};
 use crate::annotations::{State, parsing::parse_attribute};
+use crate::param_source::{ParamSources, collect_param_sources};
 use crate::vir_backend::create_verus_vir_with_ready_annotations;
 use crate::vir_backend::vir_gen::expr_to_vir::std_functions::OLD;
 use crate::vir_backend::vir_gen::typed_attrs_to_vir::convert_typed_attribute_to_vir_attribute;
 use crate::vir_backend::vir_gen::{Attribute, BuildingKrateError};
-use fm::FileId;
-use iter_extended::vecmap;
+use fm::{FileId, FileMap};
 use noirc_driver::{CompilationResult, CompileError, CompileOptions, check_crate};
 use noirc_errors::Location;
+use noirc_errors::call_stack::CallStack;
 use noirc_errors::{CustomDiagnostic, Span};
-use noirc_evaluator::errors::{RuntimeError, SsaReport};
+use noirc_evaluator::errors::RuntimeError;
 use noirc_frontend::graph::CrateGraph;
 use noirc_frontend::hir::def_map::{
     DefMaps, LocalModuleId, ModuleDefId, ModuleId, fully_qualified_module_path,
@@ -113,7 +114,7 @@ fn modified_compile_for_entry_internal(
         },
     )?;
 
-    let compilation_warnings = vecmap(compiled_program.warnings.clone(), CustomDiagnostic::from);
+    let compilation_warnings = compiled_program.warnings.clone();
     if options.deny_warnings && !compilation_warnings.is_empty() {
         return Err(compilation_warnings);
     }
@@ -132,9 +133,14 @@ fn modified_compile_no_check(
 ) -> Result<KrateAndWarnings, CompilationErrorBundle> {
     let force_unconstrained = options.force_brillig || options.minimal_ssa;
 
-    let (program, fv_annotations) = modified_monomorphize(
+    // `Monomorphizer::new` gained a `&FileMap` and a `debug_crate_id` since `beta.13`.
+    // `context` is borrowed mutably for `def_interner` below, so the file map has to be
+    // taken out first.
+    let files = context.file_manager.as_file_map().clone();
+    let (program, fv_annotations, param_sources) = modified_monomorphize(
         main_function,
         &mut context.def_interner,
+        &files,
         &DebugInstrumenter::default(),
         force_unconstrained,
         &context.crate_graph,
@@ -165,11 +171,11 @@ fn modified_compile_no_check(
     }
 
     Ok(KrateAndWarnings {
-        krate: create_verus_vir_with_ready_annotations(program, fv_annotations)
+        krate: create_verus_vir_with_ready_annotations(program, fv_annotations, &param_sources)
             .map_err(|BuildingKrateError::Error(msg)| {
                 RuntimeError::InternalError(noirc_evaluator::errors::InternalError::General {
                     message: msg,
-                    call_stack: vec![],
+                    call_stack: CallStack::empty(),
                 })
             })
             .map_err(|runtime_error| {
@@ -189,16 +195,25 @@ pub enum TypedAttribute {
 fn modified_monomorphize(
     main: node_interner::FuncId,
     interner: &mut NodeInterner,
+    files: &FileMap,
     debug_instrumenter: &DebugInstrumenter,
     force_unconstrained: bool,
     crate_graph: &CrateGraph,
     def_maps: &DefMaps,
-) -> Result<(Program, Vec<(FuncId, Vec<Attribute>)>), MonomorphizationErrorBundle> {
+) -> Result<(Program, Vec<(FuncId, Vec<Attribute>)>, ParamSources), MonomorphizationErrorBundle> {
     let debug_type_tracker = DebugTypeTracker::build_from_debug_instrumenter(debug_instrumenter);
-    let mut monomorphizer = Monomorphizer::new(interner, debug_type_tracker, force_unconstrained);
-    let function_sig = monomorphizer
-        .compile_main(main)
-        .map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
+    let mut monomorphizer = Monomorphizer::new(
+        interner,
+        files,
+        debug_type_tracker,
+        // `debug_crate_id`: Verno never runs the debug instrumenter, so there is no debug
+        // crate to attribute instrumented code to.
+        None,
+        force_unconstrained,
+    );
+    // `compile_main` no longer returns a `FunctionSignature`; the type was removed
+    // upstream in noir-lang/noir#11217 along with `Function::func_sig`.
+    monomorphizer.compile_main(main).map_err(MonomorphizationErrorBundle::MonomorphizationError)?;
     let mut new_ids_to_old_ids: HashMap<FuncId, node_interner::FuncId> = HashMap::new();
     new_ids_to_old_ids.insert(Program::main_id(), main);
 
@@ -242,6 +257,13 @@ fn modified_monomorphize(
     // Initialize the globals map and a tracker for the last seen crate ID outside the loop.
     let mut globals_with_paths: HashMap<String, GlobalValue> = HashMap::new();
     let mut last_crate_id: Option<CrateId> = None;
+
+    // Per-parameter source locations and `mut` markers, which `Function::func_sig` used to
+    // carry on the monomorphised AST. See `crate::param_source`.
+    let mut param_sources: ParamSources = ParamSources::new();
+    for (new_func_id, old_id) in &new_ids_to_old_ids {
+        param_sources.insert(*new_func_id, collect_param_sources(monomorphizer.interner(), old_id));
+    }
 
     for (new_func_id, old_id) in functions_to_process {
         let parameters_hir_types: HashMap<String, noirc_frontend::Type> =
@@ -349,14 +371,31 @@ fn modified_monomorphize(
         fv_annotations.push((func_id, vec![Attribute::Ghost]));
     });
 
-    let program = monomorphizer.into_program(function_sig);
+    // Functions monomorphised on demand during attribute type inference are queued after
+    // the table above was built, so refresh it from the (now final) id map. This has to
+    // happen before `into_program`, which consumes the monomorphiser.
+    let mut param_sources = param_sources;
+    for (new_func_id, old_id) in &new_ids_to_old_ids {
+        param_sources
+            .entry(*new_func_id)
+            .or_insert_with(|| collect_param_sources(monomorphizer.interner(), old_id));
+    }
 
-    Ok((program.handle_ownership(), fv_annotations))
+    let program = monomorphizer.into_program();
+
+    Ok((program.handle_ownership(), fv_annotations, param_sources))
 }
 
 pub struct KrateAndWarnings {
     pub krate: Krate,
-    pub warnings: Vec<SsaReport>,
+    /// This was `Vec<SsaReport>` until Noir `v1.0.0-beta.26` moved `SsaReport` from
+    /// `noirc_evaluator::errors` to `noirc_artifacts::ssa`. Verno never populates this
+    /// field — it does not run the SSA pipeline at all (the only two `noirc_evaluator`
+    /// references in the crate are error types) — and its sole consumer immediately
+    /// converted each entry to a `CustomDiagnostic`. Holding diagnostics directly keeps
+    /// the meaning and avoids taking a dependency on `noirc_artifacts` for a type that is
+    /// only ever an empty vector.
+    pub warnings: Vec<CustomDiagnostic>,
     pub parse_annotations_errors: Vec<ParserError>,
 }
 
@@ -554,7 +593,7 @@ pub fn monomorphize_function_by_func_id(
 
         let location = Location::dummy();
         let bindings = &type_bindings;
-        let bindings = monomorphizer.follow_bindings(bindings);
+        let bindings = Monomorphizer::follow_bindings(bindings);
         monomorphizer.queue_function_with_bindings(
             func_id,
             location,
@@ -636,8 +675,11 @@ fn update_globals_if_needed(
             .scope()
             .values()
             .into_iter()
-            .filter_map(|(identifier, map)| match map.get(&None) {
-                Some((ModuleDefId::GlobalId(id), ..)) => Some((id, identifier)),
+            // A module scope entry used to be a map keyed by `Option<FuncId>` (to
+            // disambiguate trait methods); it is a single `NamespaceItem` now, so there is
+            // no `.get(&None)` step and no `Option` to unwrap.
+            .filter_map(|(identifier, item)| match item.id {
+                ModuleDefId::GlobalId(id) => Some((id, identifier)),
                 _ => None,
             })
             .collect();

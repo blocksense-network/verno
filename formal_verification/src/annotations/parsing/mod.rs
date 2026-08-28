@@ -594,7 +594,10 @@ pub(crate) fn parse_cast_suffix<'a>(input: Input<'a>) -> PResult<'a, CastTargetT
                     _ => unreachable!(),
                 },
                 match size {
-                    "1" => IntegerBitSize::One,
+                    // `u1` was removed from user-facing Noir in noir-lang/noir#11753
+                    // (`v1.0.0-beta.20`), taking `IntegerBitSize::One` with it. A cast to
+                    // `u1`/`i1` in a specification is now rejected here, the same way any
+                    // other unrecognised width is.
                     "8" => IntegerBitSize::Eight,
                     "16" => IntegerBitSize::Sixteen,
                     "32" => IntegerBitSize::ThirtyTwo,
@@ -901,52 +904,58 @@ pub mod tests {
                         LocalId(0),
                         false,
                         "a".to_string(),
-                        NoirType::Integer(
+                        Rc::new(NoirType::Integer(
                             noirc_frontend::shared::Signedness::Signed,
                             noirc_frontend::ast::IntegerBitSize::ThirtyTwo,
-                        ),
+                        )),
                         Visibility::Public,
                     ),
-                    (LocalId(1), false, "kek".to_string(), NoirType::Unit, Visibility::Public),
+                    (
+                        LocalId(1),
+                        false,
+                        "kek".to_string(),
+                        Rc::new(NoirType::Unit),
+                        Visibility::Public,
+                    ),
                     (
                         LocalId(2),
                         false,
                         "Banica_123_".to_string(),
-                        NoirType::Bool,
+                        Rc::new(NoirType::Bool),
                         Visibility::Public,
                     ),
                     (
                         LocalId(3),
                         false,
                         "xs".to_string(),
-                        NoirType::Array(3, Box::new(NoirType::Field)),
+                        Rc::new(NoirType::Array(3, Rc::new(NoirType::Field))),
                         Visibility::Public,
                     ),
                     (
                         LocalId(3),
                         false,
                         "rxs".to_string(),
-                        NoirType::Reference(
-                            Box::new(NoirType::Array(3, Box::new(NoirType::Field))),
+                        Rc::new(NoirType::Reference(
+                            Rc::new(NoirType::Array(3, Rc::new(NoirType::Field))),
                             false,
-                        ),
+                        )),
                         Visibility::Public,
                     ),
                     (
                         LocalId(4),
                         false,
                         "user".to_string(),
-                        NoirType::Tuple(vec![NoirType::Bool, NoirType::Unit]),
+                        Rc::new(NoirType::Tuple(vec![NoirType::Bool, NoirType::Unit])),
                         Visibility::Public,
                     ),
                     (
                         LocalId(5),
                         false,
                         "pair".to_string(),
-                        NoirType::Tuple(vec![
+                        Rc::new(NoirType::Tuple(vec![
                             NoirType::Integer(Signedness::Unsigned, IntegerBitSize::Sixteen),
                             NoirType::Field,
-                        ]),
+                        ])),
                         Visibility::Public,
                     ),
                     (
@@ -954,11 +963,11 @@ pub mod tests {
                         false,
                         "object".to_string(),
                         // Structures are of type Tuple in the Mon. Ast
-                        NoirType::Tuple(vec![
+                        Rc::new(NoirType::Tuple(vec![
                             NoirType::Integer(Signedness::Unsigned, IntegerBitSize::Sixteen),
                             NoirType::Field,
                             NoirType::Bool,
-                        ]),
+                        ])),
                         Visibility::Public,
                     ),
                 ],
@@ -970,7 +979,8 @@ pub mod tests {
                 return_visibility: Visibility::Public,
                 unconstrained: false,
                 inline_type: InlineType::Inline,
-                func_sig: (vec![], None),
+                is_entry_point: false,
+                allow_constant_return: false,
             })),
             global_constants: Box::leak(Box::new(vec![].into_iter().collect())),
             functions: Box::leak(Box::new(
@@ -988,7 +998,8 @@ pub mod tests {
                         return_visibility: Visibility::Public,
                         unconstrained: false,
                         inline_type: InlineType::Inline,
-                        func_sig: (vec![], None),
+                        is_entry_point: false,
+                        allow_constant_return: false,
                     },
                 )]
                 .into_iter()

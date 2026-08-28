@@ -3,6 +3,7 @@ use noirc_frontend::{
     monomorphization::ast::{LocalId, Type},
     shared::Visibility,
 };
+use std::rc::Rc;
 use vir::{
     ast::{Mode, Param, ParamX},
     def::Spanned,
@@ -13,7 +14,7 @@ use crate::vir_backend::vir_gen::{
     expr_to_vir::{ast_var_into_var_ident, types::ast_type_to_vir_type},
 };
 
-type AstParam = (LocalId, /*mutable:*/ bool, /*name:*/ String, Type, Visibility);
+type AstParam = (LocalId, /*mutable:*/ bool, /*name:*/ String, Rc<Type>, Visibility);
 
 pub fn ast_param_to_vir_param(
     parameter: &AstParam,

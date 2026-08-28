@@ -1,8 +1,9 @@
+use acvm::AcirField;
 use noirc_errors::Location;
 use noirc_frontend::{
     ast::Ident,
     hir::{
-        comptime::Value,
+        comptime::{Integer, Value},
         resolution::{errors::ResolverError, import::PathResolutionError},
     },
     node_interner::GlobalValue,
@@ -67,6 +68,37 @@ pub fn inline_global_consts(
     })
 }
 
+/// Converts a comptime `Integer` to Verno's `num_bigint::BigInt`.
+///
+/// This crosses the `num-bigint` version boundary described in the VN-M1 survey §6:
+/// Noir `v1.0.0-beta.26` is on `num-bigint 0.5`, while Verno and the Verus `vir` crate it
+/// links are on `0.4`. The two `BigInt` types are distinct to the compiler, so nothing that
+/// comes out of the Noir side can be used directly. Rather than move Verno to 0.5 (which
+/// would push the conversion onto every `vir` call instead) or move the Verus pin, the
+/// conversion happens here, at the one boundary Verno actually reads integers across.
+///
+/// It goes through `FieldElement`'s big-endian bytes rather than `Integer::to_bigint`,
+/// which upstream made `pub(crate)`. Negative signed values are reconstructed from the
+/// variant's own Rust integer type, so no sign information is lost. `Integer::Field` keeps
+/// the previous behaviour of taking the raw positive field representation: `Value::Field`
+/// used to be read through `SignedField::to_field_element()`, which is the same encoding.
+fn comptime_integer_to_bigint(integer: Integer) -> BigInt {
+    match integer {
+        Integer::Field(field) => {
+            BigInt::from_biguint(Sign::Plus, BigUint::from_bytes_be(&field.to_be_bytes()))
+        }
+        Integer::I8(value) => BigInt::from(value),
+        Integer::I16(value) => BigInt::from(value),
+        Integer::I32(value) => BigInt::from(value),
+        Integer::I64(value) => BigInt::from(value),
+        Integer::U8(value) => BigInt::from(value),
+        Integer::U16(value) => BigInt::from(value),
+        Integer::U32(value) => BigInt::from(value),
+        Integer::U64(value) => BigInt::from(value),
+        Integer::U128(value) => BigInt::from(value),
+    }
+}
+
 fn resolved_value_to_exprf(
     value: &Value,
     location: Location,
@@ -74,22 +106,13 @@ fn resolved_value_to_exprf(
     Ok(match value {
         Value::Unit => ExprF::Tuple { exprs: Vec::new() },
         Value::Bool(bool_val) => ExprF::Literal { value: Literal::Bool(*bool_val) },
-        Value::Field(signed_field) => {
-            let field_as_big_uint: BigUint = signed_field.to_field_element().into_repr().into();
-            ExprF::Literal {
-                value: Literal::Int(BigInt::from_biguint(Sign::Plus, field_as_big_uint)),
-            }
+        // Since Noir `v1.0.0-beta.20` the eleven numeric `Value` variants
+        // (`Field`, `I8`…`I64`, `U1`…`U128`) are a single `Value::Integer` carrying a
+        // `hir::comptime::Integer`, which keeps its own width. `u1` was removed from the
+        // language entirely (noir-lang/noir#11753), so there is no `U1` case to port.
+        Value::Integer(integer) => {
+            ExprF::Literal { value: Literal::Int(comptime_integer_to_bigint(*integer)) }
         }
-        Value::I8(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::I16(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::I32(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::I64(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U1(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U8(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U16(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U32(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U64(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
-        Value::U128(integer) => ExprF::Literal { value: Literal::Int(BigInt::from(*integer)) },
         Value::Tuple(values) => {
             let exprs = values
                 .iter()
@@ -119,7 +142,8 @@ fn resolved_value_to_exprf(
         | Value::Struct(..)
         | Value::Enum(..)
         | Value::Pointer(..)
-        | Value::Slice(..)
+        | Value::Vector(..)
+        | Value::Location(..)
         | Value::Quoted(..)
         | Value::TypeDefinition(..)
         | Value::TraitConstraint(..)

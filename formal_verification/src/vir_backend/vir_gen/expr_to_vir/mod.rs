@@ -98,7 +98,7 @@ fn lvalue_location(lvalue: &LValue) -> Option<Location> {
 fn literal_location(literal: &Literal) -> Option<Location> {
     match literal {
         Literal::Integer(_, _, location) => Some(*location),
-        Literal::Array(array) | Literal::Slice(array) => combine_locations(array.contents.iter()),
+        Literal::Array(array) | Literal::Vector(array) => combine_locations(array.contents.iter()),
         Literal::FmtStr(_, _, expr) => expression_location(expr),
         _ => None,
     }

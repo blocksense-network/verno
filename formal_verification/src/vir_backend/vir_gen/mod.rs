@@ -13,6 +13,7 @@ use vir::{
     messages::Span,
 };
 
+use crate::param_source::ParamSources;
 use crate::vir_backend::vir_gen::{
     expr_to_vir::expression_location, function::build_funx_with_ready_annotations,
     globals::build_global_const_x,
@@ -64,6 +65,7 @@ impl Display for BuildingKrateError {
 pub fn build_krate_with_ready_annotations(
     program: Program,
     fv_annotations: Vec<(FuncId, Vec<Attribute>)>,
+    param_sources: &ParamSources,
 ) -> Result<Krate, BuildingKrateError> {
     let mut vir = KrateX {
         functions: Vec::new(),
@@ -114,7 +116,13 @@ pub fn build_krate_with_ready_annotations(
 
     for function in &program.functions {
         let attrs = annotations_map.remove(&function.id).unwrap_or_else(Vec::new);
-        let func_x = build_funx_with_ready_annotations(function, &module, &program.globals, attrs)?;
+        let func_x = build_funx_with_ready_annotations(
+            function,
+            &module,
+            &program.globals,
+            attrs,
+            param_sources,
+        )?;
         let function = Spanned::new(
             build_span(
                 function.id.0,

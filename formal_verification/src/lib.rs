@@ -1,5 +1,8 @@
 pub mod annotations;
+pub mod bigint_bridge;
 pub mod driver;
+pub mod param_source;
+pub mod signed_field;
 pub mod venir_communication;
 pub mod vir_backend;
 

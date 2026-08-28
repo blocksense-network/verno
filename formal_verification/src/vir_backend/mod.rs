@@ -3,6 +3,7 @@ use vir::ast::Krate;
 use vir_gen::Attribute;
 use vir_gen::BuildingKrateError;
 
+use crate::param_source::ParamSources;
 use crate::vir_backend::{
     lowering::monomorph_ast_optimization_passes, vir_gen::build_krate_with_ready_annotations,
 };
@@ -14,7 +15,8 @@ pub mod vir_gen;
 pub fn create_verus_vir_with_ready_annotations(
     program: Program,
     fv_annotations: Vec<(FuncId, Vec<Attribute>)>,
+    param_sources: &ParamSources,
 ) -> Result<Krate, BuildingKrateError> {
-    let program = monomorph_ast_optimization_passes(program);
-    build_krate_with_ready_annotations(program, fv_annotations)
+    let program = monomorph_ast_optimization_passes(program, param_sources);
+    build_krate_with_ready_annotations(program, fv_annotations, param_sources)
 }

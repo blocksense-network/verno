@@ -3,14 +3,52 @@ use std::collections::HashMap;
 use acvm::FieldElement;
 use noirc_errors::Location;
 use noirc_frontend::{
-    ast::{BinaryOpKind, UnaryOp},
+    ast::{BinaryOpKind, IntegerBitSize, UnaryOp},
     monomorphization::ast::{
-        ArrayLiteral, Definition, Expression, Function, Let, Literal, LocalId, Program,
+        ArrayLiteral, Definition, Expression, Function, Let, Literal, LocalId, Program, Type,
     },
-    signed_field::SignedField,
+    shared::Signedness,
 };
 
+use crate::signed_field::SignedField;
 use crate::vir_backend::vir_gen::expr_to_vir::expression_location;
+
+/// Recovers the sign of a monomorphised integer literal.
+///
+/// Up to Noir `v1.0.0-beta.19`, `ast::Literal::Integer` carried a `SignedField`, which
+/// stated its sign explicitly. Since `v1.0.0-beta.20` (noir-lang/noir#11710) it carries a
+/// bare `FieldElement` in which negative values are encoded by *field negation* — not
+/// two's complement — with the accompanying `ast::Type` as the only way to tell a negative
+/// value from a large positive one.
+///
+/// The rule below is the same one the Noir compiler itself applies when it lowers these
+/// literals to SSA (`ssa_gen::context::checked_numeric_constant`): a value is negative
+/// exactly when its type is a signed integer and the field exceeds that type's maximum
+/// positive value. `Field` has no signedness, so a `Field` literal is always positive here
+/// — which also matches Verno's previous behaviour, since the old code read `Value::Field`
+/// through `SignedField::to_field_element()`, i.e. already in field-negation form.
+pub fn signed_field_from_literal(value: FieldElement, typ: &Type) -> SignedField {
+    if let Type::Integer(Signedness::Signed, bit_size) = typ {
+        let bits = signed_bit_width(*bit_size);
+        // The largest representable positive value for this width.
+        let max_positive = FieldElement::from((1u128 << (bits - 1)) - 1);
+        if value > max_positive {
+            // `value` is `-x` in the field, so `-value` is `x`.
+            return SignedField::new(-value, true);
+        }
+    }
+    SignedField::new(value, false)
+}
+
+fn signed_bit_width(bit_size: IntegerBitSize) -> u32 {
+    match bit_size {
+        IntegerBitSize::Eight => 8,
+        IntegerBitSize::Sixteen => 16,
+        IntegerBitSize::ThirtyTwo => 32,
+        IntegerBitSize::SixtyFour => 64,
+        IntegerBitSize::HundredTwentyEight => 128,
+    }
+}
 
 /// Unrolls all `for` loops in constrained functions.
 pub fn unroll_for_loops_pass(program: &mut Program) {
@@ -79,8 +117,16 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
             let mut unrolled: Vec<Expression> = Vec::new();
             constants.push_scope();
 
-            for i in start..end {
-                let i_as_field = SignedField::new(FieldElement::from(i), false);
+            // `For` gained an `inclusive` flag in `v1.0.0-beta.19` (noir-lang/noir#10567):
+            // `for i in a..=b` used to be rewritten to an exclusive range with the bound
+            // incremented, and is now carried through to the monomorphised AST as it was
+            // written. An unrolled loop can honour it exactly, so it is supported here. The
+            // *non*-unrollable case is not — see `expr_to_vir::expr::ast_for_to_vir_expr`.
+            let indices: Vec<i128> =
+                if for_expr.inclusive { (start..=end).collect() } else { (start..end).collect() };
+
+            for i in indices {
+                let i_as_field = SignedField::from(i);
                 constants.insert(for_expr.index_variable, i_as_field.clone());
 
                 let mut cloned_body = for_expr.block.clone();
@@ -92,7 +138,9 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
                     mutable: false,
                     name: for_expr.index_name.clone(),
                     expression: Box::new(Expression::Literal(Literal::Integer(
-                        i_as_field,
+                        // `to_field_element()` produces exactly the field-negation encoding
+                        // `ast::Literal::Integer` expects for negative values.
+                        i_as_field.to_field_element(),
                         for_expr.index_type.clone(),
                         expression_location.unwrap_or(Location::dummy()),
                     ))),
@@ -159,7 +207,7 @@ fn visit_expr(expr: &mut Expression, constants: &mut ConstScope, let_local_id: O
 fn insert_collection_if_any(id: LocalId, expression: &Expression, constants: &mut ConstScope) {
     match expression {
         Expression::Literal(Literal::Array(array_literal))
-        | Expression::Literal(Literal::Slice(array_literal)) => {
+        | Expression::Literal(Literal::Vector(array_literal)) => {
             constants.insert_collection(
                 id,
                 array_literal
@@ -168,6 +216,13 @@ fn insert_collection_if_any(id: LocalId, expression: &Expression, constants: &mu
                     .map(|element| collect_constant_from_expression(element, constants))
                     .collect(),
             );
+        }
+        // `[expr; N]` is no longer expanded by the monomorphiser (noir-lang/noir#11279,
+        // `v1.0.0-beta.19`); it arrives as a single `Repeated` literal. Materialise it here
+        // so constant indexing into a repeated array still folds.
+        Expression::Literal(Literal::Repeated { element, length, .. }) => {
+            let element_constant = collect_constant_from_expression(element, constants);
+            constants.insert_collection(id, vec![element_constant; *length as usize]);
         }
         Expression::Tuple(expressions) => {
             constants.insert_collection(
@@ -195,7 +250,7 @@ fn collect_constant_from_expression(
     match expr {
         Expression::Ident(ident) => constants.get(&get_local_id(&ident.definition)?),
         Expression::Literal(literal) => match literal {
-            Literal::Integer(signed_field, ..) => Some(*signed_field),
+            Literal::Integer(value, typ, _) => Some(signed_field_from_literal(*value, typ)),
             _ => None, // Handled by `collect_constant_collection_from_expression`
         },
         Expression::Block(_) => match constants.get_last_block_value() {
@@ -328,13 +383,16 @@ fn collect_constant_collection_from_expression(
             Some(_) | None => None,
         },
         Expression::Literal(Literal::Array(ArrayLiteral { contents, .. }))
-        | Expression::Literal(Literal::Slice(ArrayLiteral { contents, .. }))
+        | Expression::Literal(Literal::Vector(ArrayLiteral { contents, .. }))
         | Expression::Tuple(contents) => Some(
             contents
                 .iter()
                 .map(|element| collect_constant_from_expression(element, constants))
                 .collect(),
         ),
+        Expression::Literal(Literal::Repeated { element, length, .. }) => {
+            Some(vec![collect_constant_from_expression(element, constants); *length as usize])
+        }
         _ => None,
     }
 }
@@ -466,4 +524,65 @@ impl ConstScope {
 enum LastBlockValue {
     ConstantBinding(Option<SignedField>),
     ConstantCollection(Vec<Option<SignedField>>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The sign-recovery rule is the one place where a subtle error would produce a *wrong
+    /// proof* rather than a crash or a lost one, so it is pinned here against the rule the
+    /// Noir compiler itself applies in `ssa_gen::context::checked_numeric_constant`: a value
+    /// is negative exactly when its type is a signed integer and the field exceeds that
+    /// type's `NumericType::max_value()`, which is `2^(bits-1) - 1`.
+    fn signed(bits: IntegerBitSize) -> Type {
+        Type::Integer(Signedness::Signed, bits)
+    }
+
+    #[test]
+    fn positive_values_of_a_signed_type_keep_their_sign() {
+        for (bits, max) in [
+            (IntegerBitSize::Eight, 127i128),
+            (IntegerBitSize::Sixteen, 32_767),
+            (IntegerBitSize::ThirtyTwo, 2_147_483_647),
+        ] {
+            for value in [0i128, 1, max] {
+                let recovered =
+                    signed_field_from_literal(FieldElement::from(value as u128), &signed(bits));
+                assert!(!recovered.is_negative(), "{value} at {bits:?} became negative");
+                assert_eq!(recovered.to_i128(), value);
+            }
+        }
+    }
+
+    #[test]
+    fn field_negated_values_of_a_signed_type_are_recovered_as_negative() {
+        // The compiler encodes a negative literal by field negation, so `-x` is `p - x`.
+        for (bits, min) in [
+            (IntegerBitSize::Eight, -128i128),
+            (IntegerBitSize::Sixteen, -32_768),
+            (IntegerBitSize::ThirtyTwo, -2_147_483_648),
+        ] {
+            for value in [-1i128, -42, min] {
+                let encoded = -FieldElement::from(value.unsigned_abs());
+                let recovered = signed_field_from_literal(encoded, &signed(bits));
+                assert!(recovered.is_negative(), "{value} at {bits:?} stayed positive");
+                assert_eq!(recovered.to_i128(), value, "{value} at {bits:?} round-tripped wrong");
+            }
+        }
+    }
+
+    #[test]
+    fn a_field_literal_is_never_negative() {
+        // `Field` has no signedness, so a large value is a large positive value and must not
+        // be reinterpreted as a small negative one.
+        let large = -FieldElement::from(1u128);
+        assert!(!signed_field_from_literal(large, &Type::Field).is_negative());
+    }
+
+    #[test]
+    fn an_unsigned_literal_is_never_negative() {
+        let typ = Type::Integer(Signedness::Unsigned, IntegerBitSize::Eight);
+        assert!(!signed_field_from_literal(FieldElement::from(255u128), &typ).is_negative());
+    }
 }

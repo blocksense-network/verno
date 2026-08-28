@@ -42,6 +42,8 @@
 //! ```
 //!
 
+use std::rc::Rc;
+
 use std::{borrow::Cow, u32};
 
 use noirc_errors::Location;
@@ -164,7 +166,7 @@ fn fix_assign_expression_inner(assign_expr: &mut Assign, location: Option<Locati
             definition: Definition::Function(FuncId(u32::MAX)),
             mutable: false,
             name: String::from("assume"),
-            typ: Type::Unit,
+            typ: Rc::new(Type::Unit),
             id: IdentId(u32::MAX),
         })),
         arguments: vec![Expression::Binary(Binary {
@@ -195,7 +197,7 @@ fn define_first_lhs_ident(
         definition: Definition::Local(LocalId(local_id)),
         mutable: true,
         name: build_lvalue_string(lvalue),
-        typ: typ.clone(),
+        typ: Rc::new(typ.clone()),
         id: IdentId(local_id),
     }
 }
@@ -275,7 +277,7 @@ fn generate_let_mut_assign_exprs(
             definition: Definition::Local(LocalId(last_local_id + 1)),
             mutable: true,
             name: new_lhs_name,
-            typ: new_lhs_type_ref.clone(),
+            typ: Rc::new(new_lhs_type_ref.clone()),
             id: IdentId(last_local_id + 1),
         };
         let assign_expr = Expression::Assign(Assign {

@@ -36,12 +36,14 @@ use vir::{
 
 use crate::driver::compilation_pipeline::TypedAttribute;
 
+use crate::bigint_bridge::field_modulus_as_bigint;
+use crate::signed_field::SignedField;
 use acvm::{AcirField, FieldElement};
-use noirc_frontend::signed_field::SignedField;
-use num_bigint::{BigInt, ToBigInt}; // Replace with the actual path to SignedField
+use num_bigint::BigInt;
 
 pub fn signed_field_from_bigint_wrapping(value: BigInt) -> SignedField {
-    let modulus = FieldElement::modulus().to_bigint().unwrap();
+    // `AcirField::modulus()` is a `num-bigint 0.5` value; see `crate::bigint_bridge`.
+    let modulus = field_modulus_as_bigint();
 
     // Wrap value to the positive modulus range
     let wrapped = ((&value % &modulus) + &modulus) % &modulus;

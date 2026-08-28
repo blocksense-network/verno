@@ -1,4 +1,4 @@
-use std::{convert::identity, fmt::Display, ops::AddAssign};
+use std::{convert::identity, fmt::Display, ops::AddAssign, rc::Rc};
 
 use crate::{
     FUNC_RETURN_VAR_NAME,
@@ -169,6 +169,7 @@ impl SpannedPartiallyTypedExpr {
                                 expected_typ: self.ann.1.to_string(),
                                 expr_typ: "Reference".to_string(),
                                 expr_location: self.ann.0,
+                                similarly_named_types: Vec::new(),
                             },
                         ));
                     }
@@ -235,6 +236,7 @@ impl SpannedPartiallyTypedExpr {
                         expected_typ: target_type.to_string(),
                         expr_typ: well_type.to_string(),
                         expr_location: self.ann.0,
+                        similarly_named_types: Vec::new(),
                     }));
                 }
 
@@ -247,6 +249,7 @@ impl SpannedPartiallyTypedExpr {
                         expected_typ: target_type.to_string(),
                         expr_typ: "tuple".to_string(),
                         expr_location: self.ann.0,
+                        similarly_named_types: Vec::new(),
                     }));
                 };
 
@@ -355,8 +358,13 @@ pub fn type_infer(
                         })
                         .or_else(|| {
                             state.function.parameters.iter().find_map(|(id, _, par_name, t, _)| {
+                                // `Parameters` holds `Rc<Type>` since `v1.0.0-beta.20`.
                                 (par_name == name).then(|| {
-                                    (name.as_str(), Some(id.0), OptionalType::Well(t.clone()))
+                                    (
+                                        name.as_str(),
+                                        Some(id.0),
+                                        OptionalType::Well(t.as_ref().clone()),
+                                    )
                                 })
                             })
                         })
@@ -410,7 +418,7 @@ pub fn type_infer(
                     for (arg, (_id, _mut, _name, typ, _visibility)) in
                         args.iter_mut().zip(&func_object.parameters)
                     {
-                        arg.unify_with_type(typ.clone())?;
+                        arg.unify_with_type(typ.as_ref().clone())?;
                     }
 
                     OptionalType::Well(func_object.return_type.clone())
@@ -454,7 +462,7 @@ pub fn type_infer(
                         UnaryOp::Dereference => {
                             match &expr.ann.1 {
                                 OptionalType::Well(NoirType::Reference(t, _)) => {
-                                    OptionalType::Well(*t.clone())
+                                    OptionalType::Well(t.as_ref().clone())
                                 }
                                 _ => {
                                     // TODO(totel): better error?
@@ -565,6 +573,7 @@ pub fn type_infer(
                                                         expected_typ: t1.to_string(),
                                                         expr_typ: t2.to_string(),
                                                         expr_location: right_expr.ann.0,
+                                                        similarly_named_types: Vec::new(),
                                                     },
                                                 ));
                                             }
@@ -595,6 +604,7 @@ pub fn type_infer(
                                                 expected_typ: t1.to_string(),
                                                 expr_typ: t2.to_string(),
                                                 expr_location: right_expr.ann.0,
+                                                similarly_named_types: Vec::new(),
                                             },
                                         )),
                                     },
@@ -622,6 +632,7 @@ pub fn type_infer(
                                                     expected_typ: right_type.to_string(),
                                                     expr_typ: left_type.to_string(),
                                                     expr_location: location,
+                                                    similarly_named_types: Vec::new(),
                                                 },
                                             ));
                                         }
@@ -646,6 +657,7 @@ pub fn type_infer(
                                             expected_typ: t1.to_string(),
                                             expr_typ: t2.to_string(),
                                             expr_location: expr_right.ann.0,
+                                            similarly_named_types: Vec::new(),
                                         },
                                     ));
                                 }
@@ -664,6 +676,7 @@ pub fn type_infer(
                                             expected_typ: "a numeric type".to_string(),
                                             expr_typ: t1.to_string(),
                                             expr_location: expr_left.ann.0,
+                                            similarly_named_types: Vec::new(),
                                         },
                                     ));
                                 }
@@ -684,6 +697,7 @@ pub fn type_infer(
                                             expected_typ: "a numeric type".to_string(),
                                             expr_typ: t2.to_string(),
                                             expr_location: expr_right.ann.0,
+                                            similarly_named_types: Vec::new(),
                                         },
                                     ));
                                 }
@@ -715,6 +729,7 @@ pub fn type_infer(
                                         expected_typ: t1.to_string(),
                                         expr_typ: t2.to_string(),
                                         expr_location: location,
+                                        similarly_named_types: Vec::new(),
                                     },
                                 ));
                             }
@@ -728,6 +743,7 @@ pub fn type_infer(
                                 expr_typ: expr.ann.1.to_string(),
                                 expected_typ: String::from("Array type"),
                                 expr_location: location,
+                                similarly_named_types: Vec::new(),
                             },
                         ));
                     };
@@ -745,12 +761,13 @@ pub fn type_infer(
                                     expr_typ: t.to_string(),
                                     expected_typ: String::from("Unsigned integer type"),
                                     expr_location: location,
+                                    similarly_named_types: Vec::new(),
                                 },
                             ));
                         }
                     }
 
-                    OptionalType::Well(*type_inner.clone())
+                    OptionalType::Well(type_inner.as_ref().clone())
                 }
                 ExprF::TupleAccess { expr, index } => {
                     let t = match &expr.ann.1 {
@@ -819,6 +836,7 @@ pub fn type_infer(
                                 expected_typ: String::from("Numeric or a boolean type"),
                                 expr_typ: t.to_string(),
                                 expr_location: location,
+                                similarly_named_types: Vec::new(),
                             },
                         ));
                     }
@@ -856,7 +874,9 @@ pub fn type_infer(
                             TypeCheckError::ResolverError(ResolverError::Expected {
                                 location,
                                 expected: "non empty array literal",
-                                got: "empty array literal",
+                                // `ResolverError::Expected`'s third field was renamed
+                                // `got` -> `found` upstream.
+                                found: "empty array literal".to_string(),
                             }),
                         ));
                     }
@@ -968,7 +988,7 @@ pub fn type_infer(
 
                     OptionalType::Well(NoirType::Array(
                         exprs.len() as u32,
-                        Box::new(concrete_element_type),
+                        Rc::new(concrete_element_type),
                     ))
                 }
                 ExprF::StructureAccess { .. } => {
@@ -1101,10 +1121,13 @@ mod tests {
                 FitsIn::No { need: Some(NoirType::Integer(hole_sign, IntegerBitSize::Sixteen)) }
             );
 
+            // `u1`/`i1` were removed from the language in noir-lang/noir#11753
+            // (`v1.0.0-beta.20`), so `IntegerBitSize::allowed_sizes()` now starts at 8 and
+            // the narrowest type that can hold `-1` is `i8`, not `i1`.
             assert_eq!(
                 bin1_fit,
                 FitsIn::No {
-                    need: Some(NoirType::Integer(Signedness::Signed, IntegerBitSize::One))
+                    need: Some(NoirType::Integer(Signedness::Signed, IntegerBitSize::Eight))
                 }
             );
         }
@@ -1280,6 +1303,7 @@ mod tests {
             expected_typ,
             expr_typ,
             expr_location,
+            similarly_named_types: _,
         }) = type_inference_error
         else {
             panic!()
@@ -1599,7 +1623,7 @@ mod tests {
             expr_left.ann.1,
             NoirType::Array(
                 3,
-                Box::new(NoirType::Tuple(vec![
+                Rc::new(NoirType::Tuple(vec![
                     NoirType::Integer(Signedness::Unsigned, IntegerBitSize::Eight),
                     NoirType::Integer(Signedness::Signed, IntegerBitSize::Sixteen)
                 ]))

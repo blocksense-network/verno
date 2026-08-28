@@ -40,19 +40,21 @@ pub fn ast_type_to_vir_type(ast_type: &Type) -> Typ {
             integer_type_to_vir_typx(signedness, integer_bit_size)
         }
         Type::Bool => TypX::Bool,
-        Type::String(_) => todo!(),
-        Type::FmtString(_, _) => todo!(),
+        Type::String(_) => todo!("UNSUPPORTED: string types"),
+        Type::FmtString(_, _) => todo!("UNSUPPORTED: format-string types"),
         Type::Unit => make_unit_vir_typx(),
         Type::Tuple(item_types) => {
             build_tuple_type(item_types.iter().map(ast_type_to_vir_type).collect())
         }
-        Type::Slice(_) => todo!(),
+        Type::Vector(_) => todo!("UNSUPPORTED: vector types (`Vec<T>` / slices)"),
         Type::Reference(referenced_type, is_mutable) => TypX::Decorate(
             if *is_mutable { TypDecoration::MutRef } else { TypDecoration::Ref },
             None,
             ast_type_to_vir_type(referenced_type),
         ),
-        Type::Function(items, _, _, _) => todo!(),
+        Type::Function(_args, _, _, _) => {
+            todo!("UNSUPPORTED: function types (lambdas, function values)")
+        }
     };
 
     Arc::new(typx)
@@ -99,7 +101,7 @@ pub fn build_tuple_type(vir_types: Vec<Typ>) -> TypX {
 pub fn get_collection_type_len(ast_type: &Type) -> Option<u32> {
     match ast_type {
         Type::Array(len, _) => Some(*len),
-        Type::Slice(inner_type) => get_collection_type_len(inner_type),
+        Type::Vector(inner_type) => get_collection_type_len(inner_type),
         Type::Reference(inner_type, _) => get_collection_type_len(inner_type),
         _ => None,
     }
@@ -108,7 +110,7 @@ pub fn get_collection_type_len(ast_type: &Type) -> Option<u32> {
 pub fn is_inner_type_array(ast_type: &Type) -> bool {
     match ast_type {
         Type::Array(_, _) => true,
-        Type::Slice(inner_type) => is_inner_type_array(inner_type),
+        Type::Vector(inner_type) => is_inner_type_array(inner_type),
         Type::Reference(inner_type, _) => is_inner_type_array(inner_type),
         _ => false,
     }

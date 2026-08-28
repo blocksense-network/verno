@@ -1,5 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::bigint_bridge::field_modulus_as_bigint;
+use crate::signed_field::SignedField;
+use crate::vir_backend::lowering::loop_unroll::signed_field_from_literal;
 use crate::{
     FUNC_RETURN_VAR_NAME,
     vir_backend::vir_gen::{
@@ -19,7 +22,6 @@ use crate::{
         },
     },
 };
-use acvm::{AcirField, FieldElement};
 use noirc_errors::Location;
 use noirc_frontend::{
     ast::{BinaryOpKind, UnaryOp},
@@ -28,7 +30,6 @@ use noirc_frontend::{
         Index, LValue, Let, Literal, Match, Type, Unary, While,
     },
     shared::Signedness,
-    signed_field::SignedField,
 };
 use num_bigint::{BigInt, BigUint};
 use num_traits::One;
@@ -91,7 +92,7 @@ pub fn ast_expr_to_vir_expr(
         Expression::If(if_expression) => {
             ast_if_to_vir_expr(if_expression, expression_location(expr), mode, globals)
         }
-        Expression::Match(_) => todo!(),
+        Expression::Match(_) => todo!("UNSUPPORTED: `match` expressions and enums"),
         Expression::Tuple(tuple_expressions) => {
             ast_tuple_to_vir_expr(tuple_expressions, expression_location(expr), mode, globals)
         }
@@ -105,7 +106,7 @@ pub fn ast_expr_to_vir_expr(
             )
         }
         Expression::Call(call_expr) => ast_call_to_vir_expr(call_expr, mode, globals),
-        Expression::Let(let_expr) => todo!(),
+        Expression::Let(_let_expr) => todo!("UNSUPPORTED: a `let` in expression position"),
         Expression::Constrain(expression, location, _) => {
             ast_constrain_to_vir_expr(&expression, Some(*location), globals)
         }
@@ -190,9 +191,17 @@ fn ast_literal_to_vir_expr(
                 exprx,
             )
         }
-        Literal::Slice(array_literal) => todo!(),
-        Literal::Integer(signed_field, ast_type, location) => {
-            let exprx = numeric_const_to_vir_exprx(signed_field, ast_type);
+        // `Vector` is what `Slice` was renamed to (gone from the monomorphised AST by
+        // `v1.0.0-beta.18`); Verno has never supported it (see docs/src/limitations.md).
+        Literal::Vector(_array_literal) => todo!("UNSUPPORTED: vector literals"),
+        // `[expr; N]` is no longer expanded by the monomorphiser
+        // (noir-lang/noir#11279, `v1.0.0-beta.19`).
+        Literal::Repeated { element, length, is_vector, typ } => {
+            repeated_literal_to_vir_expr(element, *length, *is_vector, typ, location, mode, globals)
+        }
+        Literal::Integer(value, ast_type, location) => {
+            let exprx =
+                numeric_const_to_vir_exprx(&signed_field_from_literal(*value, ast_type), ast_type);
             SpannedTyped::new(
                 &build_span_no_id(format!("Integer literal"), Some(*location)),
                 &ast_type_to_vir_type(ast_type),
@@ -220,11 +229,45 @@ fn ast_literal_to_vir_expr(
                 exprx,
             )
         }
-        Literal::Str(_) => todo!(),
-        Literal::FmtStr(fmt_str_fragments, _, expression) => todo!(),
+        Literal::Str(_) => todo!("UNSUPPORTED: string literals"),
+        Literal::FmtStr(_fragments, _, _expression) => todo!("UNSUPPORTED: format-string literals"),
     };
 
     expr
+}
+
+/// Lowers `[element; length]`.
+///
+/// Before Noir `v1.0.0-beta.19` the monomorphiser expanded this into a `Literal::Array`
+/// with `length` copies of `element`, so Verno never saw it. Upstream stopped expanding it
+/// (noir-lang/noir#11279) to avoid holding `N` copies of the element in memory. Verno
+/// restores the old shape here, which keeps the VIR identical to what it used to build.
+///
+/// The element expression is evaluated once in the source and `length` times here. That is
+/// sound for the expressions Verno actually supports — it has no lambdas and no oracle
+/// calls in verified code — but it would duplicate side effects if that ever changed, so
+/// the duplication is deliberate and confined to this function.
+fn repeated_literal_to_vir_expr(
+    element: &Expression,
+    length: u32,
+    is_vector: bool,
+    typ: &Type,
+    location: Option<Location>,
+    mode: Mode,
+    globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
+) -> Expr {
+    if is_vector {
+        todo!("UNSUPPORTED: a repeated vector literal `[expr; N]` of vector type")
+    }
+
+    let element_expr = ast_expr_to_vir_expr(element, mode, globals);
+    let exprx = ExprX::ArrayLiteral(Arc::new(vec![element_expr; length as usize]));
+
+    SpannedTyped::new(
+        &build_span_no_id(format!("Repeated array literal expression"), location),
+        &ast_type_to_vir_type(typ),
+        exprx,
+    )
 }
 
 pub fn numeric_const_to_vir_exprx(signed_field: &SignedField, ast_type: &Type) -> ExprX {
@@ -399,7 +442,7 @@ fn ast_unary_to_vir_expr(
     globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
 ) -> Expr {
     let exprx = match (unary_expr.operator, &unary_expr.result_type) {
-        (UnaryOp::Minus, _) => todo!(),
+        (UnaryOp::Minus, _) => todo!("UNSUPPORTED: unary negation of a non-constant value"),
         (UnaryOp::Not, Type::Bool) => {
             ExprX::Unary(VirUnaryOp::Not, ast_expr_to_vir_expr(&unary_expr.rhs, mode, globals))
         }
@@ -717,7 +760,7 @@ fn ast_assign_to_vir_expr(
         );
     }
     let is_lvalue_mut = is_lvalue_mut(&assign_expr.lvalue)
-        || matches!(get_lvalue_ident(&assign_expr.lvalue).typ, Type::Reference(_, true));
+        || matches!(*get_lvalue_ident(&assign_expr.lvalue).typ, Type::Reference(_, true));
     let lhs_expr = ast_lvalue_to_vir_expr(&assign_expr.lvalue, location, mode);
     let exprx = ExprX::Assign {
         init_not_mut: !is_lvalue_mut,
@@ -984,6 +1027,24 @@ fn ast_for_to_vir_expr(
     mode: Mode,
     globals: &BTreeMap<GlobalId, (String, Type, Expression)>,
 ) -> Expr {
+    // `for i in a..=b` reaches the monomorphised AST as an `inclusive` flag since Noir
+    // `v1.0.0-beta.19` (noir-lang/noir#10567). The synthetic `while` this
+    // function builds is hard-coded to Noir's exclusive-range semantics: its condition is
+    // `i < end`, its decreases measure is `end - i` and its invariant is `i <= end`. All
+    // three would be off by one for an inclusive range, and the result would be a *passing*
+    // proof of a loop the program does not contain — so this is refused rather than
+    // approximated. An inclusive range whose bounds are compile-time constants is unrolled
+    // before this point and does not reach here; see
+    // `lowering::loop_unroll`. Recorded in docs/src/limitations.md.
+    if for_expression.inclusive {
+        todo!(
+            "UNSUPPORTED: an inclusive `for` range (`{}..={}`) whose bounds are not \
+             compile-time constants; see the Limitations page in the Verno book",
+            for_expression.start_range,
+            for_expression.end_range
+        );
+    }
+
     let (init_stmt, var_ident, typ, increment_stmt) =
         build_for_loop_index(for_expression, location, mode, globals);
     let (for_loop_body_expr, mut user_invariants, mut user_decreases) =
@@ -1222,7 +1283,7 @@ pub fn ast_definition_to_id(definition: &Definition) -> Option<u32> {
         Definition::Local(local_id) => Some(local_id.0),
         Definition::Global(global_id) => Some(global_id.0),
         Definition::Function(func_id) => Some(func_id.0),
-        Definition::Builtin(_) | Definition::LowLevel(_) | Definition::Oracle(_) => None,
+        Definition::Builtin(_) | Definition::LowLevel(_) | Definition::Oracle { .. } => None,
     }
 }
 
@@ -1233,8 +1294,8 @@ pub fn wrap_with_field_modulo(dividend: Expr, mode: Mode) -> Expr {
     let expr_span = dividend.span.clone();
     let expr_type = dividend.typ.clone();
 
-    let field_modulus: BigInt =
-        BigInt::from_biguint(num_bigint::Sign::Plus, FieldElement::modulus());
+    // `AcirField::modulus()` is a `num-bigint 0.5` value; see `crate::bigint_bridge`.
+    let field_modulus: BigInt = field_modulus_as_bigint();
     let divisor_expr = SpannedTyped::new(
         &expr_span,
         &Arc::new(TypX::Int(IntRange::Int)),
