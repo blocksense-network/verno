@@ -1,0 +1,1095 @@
+{
+  "counts": {
+    "no-solver": 134,
+    "not-proved": 0,
+    "pipeline-error": 1,
+    "proved": 0,
+    "timed-out": 0,
+    "unsupported": 0
+  },
+  "results": [
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_attribute",
+      "outcome": "no-solver",
+      "seconds": 0.341
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_result_attr",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_result_attr_copy",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_result_attrs_copies",
+      "outcome": "no-solver",
+      "seconds": 0.274
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_result_const",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_as_result_global",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_copy",
+      "outcome": "no-solver",
+      "seconds": 0.271
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_param_index",
+      "outcome": "no-solver",
+      "seconds": 0.271
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_set_1",
+      "outcome": "no-solver",
+      "seconds": 0.278
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_set_complex_composite_type",
+      "outcome": "no-solver",
+      "seconds": 0.274
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_set_composite_types_1",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_set_composite_types_3",
+      "outcome": "no-solver",
+      "seconds": 0.285
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "array_set_simple",
+      "outcome": "no-solver",
+      "seconds": 0.273
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "binary_search_v1",
+      "outcome": "no-solver",
+      "seconds": 0.48
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "binary_search_v2",
+      "outcome": "no-solver",
+      "seconds": 0.319
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "bitshifts",
+      "outcome": "no-solver",
+      "seconds": 0.318
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "boolean",
+      "outcome": "no-solver",
+      "seconds": 0.337
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "builtin_mem_ops",
+      "outcome": "no-solver",
+      "seconds": 0.286
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "builtin_runtime_hint",
+      "outcome": "no-solver",
+      "seconds": 0.322
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "call_struct_method",
+      "outcome": "no-solver",
+      "seconds": 0.283
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "cast",
+      "outcome": "no-solver",
+      "seconds": 0.314
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "cast_from_to_field",
+      "outcome": "no-solver",
+      "seconds": 0.275
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "comparison",
+      "outcome": "no-solver",
+      "seconds": 0.279
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "eq_trait",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "eq_trait_1",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "exists_big_element_sum",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "exists_zero_in_array",
+      "outcome": "no-solver",
+      "seconds": 0.28
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_arithmetic",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_minus_one_is_max",
+      "outcome": "no-solver",
+      "seconds": 0.26
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_wrapped_overflow_1",
+      "outcome": "no-solver",
+      "seconds": 0.254
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_wrapped_overflow_2",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_wrapped_overflow_3",
+      "outcome": "no-solver",
+      "seconds": 0.272
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_wrapped_overflow_4",
+      "outcome": "no-solver",
+      "seconds": 0.296
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "field_wrapped_overflow_5",
+      "outcome": "no-solver",
+      "seconds": 0.302
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_array_const",
+      "outcome": "no-solver",
+      "seconds": 0.299
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_blocks",
+      "outcome": "no-solver",
+      "seconds": 0.299
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_nested_complex",
+      "outcome": "no-solver",
+      "seconds": 0.3
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_nested_simple",
+      "outcome": "no-solver",
+      "seconds": 0.291
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_simple",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_structure_const",
+      "outcome": "no-solver",
+      "seconds": 0.296
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "for_loop_tuple_const",
+      "outcome": "no-solver",
+      "seconds": 0.289
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "forall_max_is_max",
+      "outcome": "no-solver",
+      "seconds": 0.287
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "forall_structure",
+      "outcome": "no-solver",
+      "seconds": 0.287
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "forall_sum_of_evens",
+      "outcome": "no-solver",
+      "seconds": 0.295
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "func_call_in_annotation",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "func_call_in_if",
+      "outcome": "no-solver",
+      "seconds": 0.291
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "func_call_in_if_2",
+      "outcome": "no-solver",
+      "seconds": 0.293
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "func_call_in_if_3",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "func_call_in_if_4",
+      "outcome": "no-solver",
+      "seconds": 0.285
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_name_resolution_1",
+      "outcome": "no-solver",
+      "seconds": 0.287
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_name_resolution_2",
+      "outcome": "no-solver",
+      "seconds": 0.289
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_name_resolution_3",
+      "outcome": "no-solver",
+      "seconds": 0.287
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_type_check_1",
+      "outcome": "no-solver",
+      "seconds": 0.294
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_type_check_2",
+      "outcome": "no-solver",
+      "seconds": 0.289
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_attribute_type_check_3",
+      "outcome": "no-solver",
+      "seconds": 0.285
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "fv_std_old",
+      "outcome": "no-solver",
+      "seconds": 0.288
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "generics_basic",
+      "outcome": "no-solver",
+      "seconds": 0.294
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "ghost_function_in_attribute",
+      "outcome": "no-solver",
+      "seconds": 0.28
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "global_const_in_module",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "global_const_in_nested_module",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "identity_function",
+      "outcome": "no-solver",
+      "seconds": 0.301
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "if_overflow_1",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "if_overflow_2",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "if_overflow_complex",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "implication_operator_1",
+      "outcome": "no-solver",
+      "seconds": 0.289
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "implication_operator_2",
+      "outcome": "no-solver",
+      "seconds": 0.293
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_array",
+      "outcome": "no-solver",
+      "seconds": 0.284
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_const",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_var_1",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_var_2",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_var_3",
+      "outcome": "no-solver",
+      "seconds": 0.273
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_var_4",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_composite_array_with_var_5",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_var_array_with_constant",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "index_var_array_with_var",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_and",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_consts",
+      "outcome": "no-solver",
+      "seconds": 0.277
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_div",
+      "outcome": "no-solver",
+      "seconds": 0.274
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_mod",
+      "outcome": "no-solver",
+      "seconds": 0.27
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_mul",
+      "outcome": "no-solver",
+      "seconds": 0.259
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_mul_2",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_not",
+      "outcome": "no-solver",
+      "seconds": 0.268
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_or",
+      "outcome": "no-solver",
+      "seconds": 0.277
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_sub",
+      "outcome": "no-solver",
+      "seconds": 0.265
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_sum",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "integer_xor",
+      "outcome": "no-solver",
+      "seconds": 0.261
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "is_even",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "is_power_of_2",
+      "outcome": "no-solver",
+      "seconds": 0.263
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "lhs_tuple_access",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "loop_decreases",
+      "outcome": "no-solver",
+      "seconds": 0.295
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "loop_invariant",
+      "outcome": "no-solver",
+      "seconds": 0.274
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "loop_invariant_2",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "loop_invariant_nested",
+      "outcome": "no-solver",
+      "seconds": 0.364
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "mutate_array_of_tuples",
+      "outcome": "no-solver",
+      "seconds": 0.571
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "non_full_path_global_var",
+      "outcome": "no-solver",
+      "seconds": 0.29
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "obvious_assert",
+      "outcome": "no-solver",
+      "seconds": 0.263
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "obvious_assume",
+      "outcome": "no-solver",
+      "seconds": 0.267
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "operation_comutativity",
+      "outcome": "no-solver",
+      "seconds": 0.262
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "safe_division",
+      "outcome": "no-solver",
+      "seconds": 0.272
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "shadow_global_const",
+      "outcome": "no-solver",
+      "seconds": 0.407
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "struct",
+      "outcome": "no-solver",
+      "seconds": 0.513
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "struct_return",
+      "outcome": "no-solver",
+      "seconds": 0.307
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "struct_return_basic",
+      "outcome": "no-solver",
+      "seconds": 0.291
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "tuple_deconstruct",
+      "outcome": "no-solver",
+      "seconds": 0.291
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "tuple_deconstruct_2",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "tuple_return",
+      "outcome": "no-solver",
+      "seconds": 0.337
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "tuple_return_basic",
+      "outcome": "no-solver",
+      "seconds": 0.456
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "tuples",
+      "outcome": "no-solver",
+      "seconds": 0.262
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "unconstrained_loop_terminates",
+      "outcome": "no-solver",
+      "seconds": 0.266
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "vector_for_loop",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_assorted_demo",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_basic",
+      "outcome": "no-solver",
+      "seconds": 0.297
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_equality",
+      "outcome": "no-solver",
+      "seconds": 0.377
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_exec_loops",
+      "outcome": "no-solver",
+      "seconds": 0.444
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_expectations",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_integer_props",
+      "outcome": "no-solver",
+      "seconds": 0.271
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_integers",
+      "outcome": "no-solver",
+      "seconds": 0.274
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_min",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_requires_ensures",
+      "outcome": "no-solver",
+      "seconds": 0.278
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_statements",
+      "outcome": "no-solver",
+      "seconds": 0.281
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_structural",
+      "outcome": "no-solver",
+      "seconds": 0.913
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_success",
+      "name": "verus_test",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "error: Non-ghost function baz was called in FV annotation",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "exec_function_in_attribute",
+      "outcome": "pipeline-error",
+      "seconds": 0.223
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_name_resolution_1",
+      "outcome": "no-solver",
+      "seconds": 0.262
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_name_resolution_2",
+      "outcome": "no-solver",
+      "seconds": 0.268
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_name_resolution_3",
+      "outcome": "no-solver",
+      "seconds": 0.272
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_type_check_1",
+      "outcome": "no-solver",
+      "seconds": 0.317
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_type_check_2",
+      "outcome": "no-solver",
+      "seconds": 0.623
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "fv_attribute_type_check_3",
+      "outcome": "no-solver",
+      "seconds": 0.286
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "loop_break",
+      "outcome": "no-solver",
+      "seconds": 0.267
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "verus_assert_failure",
+      "outcome": "no-solver",
+      "seconds": 0.269
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "verus_expectations_failure",
+      "outcome": "no-solver",
+      "seconds": 0.273
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "verus_post_failure",
+      "outcome": "no-solver",
+      "seconds": 0.268
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "verus_requires_violation",
+      "outcome": "no-solver",
+      "seconds": 0.264
+    },
+    {
+      "detail": "Noir -> VIR pipeline completed; `venir` not available",
+      "exit_code": 1,
+      "kind": "formal_verify_failure",
+      "name": "while_loop",
+      "outcome": "no-solver",
+      "seconds": 0.272
+    }
+  ],
+  "rlimit": 10,
+  "total_seconds": 40.3,
+  "wall_clock_timeout_secs": 120
+}

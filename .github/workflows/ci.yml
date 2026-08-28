@@ -1,0 +1,131 @@
+name: CI
+
+# Verno had no CI at all until this file existed, and that is the direct cause of the
+# thirteen-release drift VN-M1 measured: the Noir pin was a *branch* on a fork, nothing ever
+# built against upstream, and nobody could see how old the pin had become. Every job below
+# exists to make one specific kind of drift visible at the commit that introduces it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The drift job needs a schedule: drift is not introduced by a commit, it accumulates
+  # while nobody commits anything.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Seconds, no build. Runs first so that an unaccompanied pin bump fails with a
+  # message that says what actually happened, instead of a wall of type errors.
+  # ---------------------------------------------------------------------------
+  noir-pin:
+    name: Noir pin is a single upstream tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-noir-pin.sh
+
+  # ---------------------------------------------------------------------------
+  # The build. `--locked` is load-bearing: it fails immediately if Cargo.toml and
+  # Cargo.lock disagree, which is what a pin bumped without the accompanying work
+  # looks like before anything is even compiled.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    needs: noir-pin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned Rust toolchain
+        # rust-toolchain.toml pins the channel; this action honours it.
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The Noir tag is part of the cache key: a pin bump must not reuse the old
+          # dependency build, or the first CI run after a bump would be misleadingly green.
+          key: noir-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+
+      - name: cargo check (locked)
+        run: cargo check --workspace --all-targets --locked
+
+      - name: cargo test (unit tests)
+        # The integration tests under verno/tests need a working `venir`; see the corpus
+        # job. These are the pure-Rust ones, including the `num-bigint` boundary
+        # conversions and the vendored `SignedField` arithmetic.
+        run: cargo test -p formal_verification --lib --locked
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+  # ---------------------------------------------------------------------------
+  # The regression corpus.
+  #
+  # This is the job that catches the breakage a green build does not. Porting Verno to
+  # `beta.26` turned up exactly one such case: upstream swapped `Type::Array`'s fields from
+  # `(length, element)` to `(element, length)`. Both are `Box<Type>`, so the compiler saw
+  # nothing wrong and twelve corpus programs started being rejected with a nonsense type
+  # error. Only running the corpus found it.
+  # ---------------------------------------------------------------------------
+  corpus:
+    name: Proof corpus vs. baseline
+    runs-on: ubuntu-latest
+    needs: noir-pin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: noir-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+
+      - name: Check the outcome classifier itself
+        # Asserts that a solver resource-limit exhaustion is reported as a timeout and not
+        # as a lost proof, that an unsupported construct does not move the proved counts,
+        # and that a corpus entry cannot silently disappear. Needs no solver.
+        run: ./scripts/run-corpus.py --self-test
+
+      - name: Build verno
+        run: cargo build --workspace --locked
+
+      - name: Run the corpus against the recorded baseline
+        # test_programs/corpus-baseline.json was recorded on the pre-upgrade tree
+        # (Noir v1.0.0-beta.13) under the resource limits pinned in scripts/run-corpus.py.
+        # The runner refuses to compare two runs taken under different limits.
+        #
+        # Without `venir` installed, every entry stops at the solver boundary and is
+        # reported as `no-solver`: that is a genuine pass of the compiler-facing half of
+        # Verno — which is the half an upstream Noir bump breaks — and the baseline records
+        # the same, so the comparison is meaningful. Installing `venir` here upgrades those
+        # entries to real proved/not-proved results; the runner reports the change as an
+        # availability change rather than as a regression, and a solver-backed baseline
+        # should be recorded the first time this job runs with one.
+        run: ./scripts/run-corpus.py --baseline test_programs/corpus-baseline.json --json corpus-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corpus-report
+          path: corpus-report.json
+
+  # ---------------------------------------------------------------------------
+  # Drift. The one job whose failure is not caused by the commit that triggers it.
+  # ---------------------------------------------------------------------------
+  noir-drift:
+    name: Distance to upstream's latest release
+    runs-on: ubuntu-latest
+    # A pull request should not fail because upstream cut a release yesterday; this is a
+    # standing report, not a gate on someone else's change.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-noir-pin.sh --check-drift
