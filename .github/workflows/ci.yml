@@ -62,7 +62,9 @@ jobs:
       - name: cargo test (unit tests)
         # The integration tests under verno/tests need a working `venir`; see the corpus
         # job. These are the pure-Rust ones, including the `num-bigint` boundary
-        # conversions and the vendored `SignedField` arithmetic.
+        # conversions, the vendored `SignedField` arithmetic, and VN-M4's payload contract
+        # — which includes validating every document in `conformance/codetracer-payload/`
+        # against the same rules CodeTracer's decoder applies to its own copy of them.
         run: cargo test -p formal_verification --lib --locked
 
       - name: cargo fmt
@@ -109,6 +111,14 @@ jobs:
         # entries to real proved/not-proved results; the runner reports the change as an
         # availability change rather than as a regression, and a solver-backed baseline
         # should be recorded the first time this job runs with one.
+        #
+        # This step also carries VN-M4's emitter gate. Every entry writes a
+        # `target/verno-report.json`, and the runner compares each report's outcome
+        # against its own classification of the same run's text. The two are computed by
+        # completely different means — one from values inside Verno, the other by matching
+        # strings in its output — so an agreement across the whole corpus is evidence, and
+        # a disagreement is a real defect in one of them. Finding *no* reports at all also
+        # fails, so the check cannot pass by having nothing to check.
         run: ./scripts/run-corpus.py --baseline test_programs/corpus-baseline.json --json corpus-report.json
 
       - uses: actions/upload-artifact@v4

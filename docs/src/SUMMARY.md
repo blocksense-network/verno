@@ -10,4 +10,5 @@
   - [Additional Features](./additional_features.md)
   - [Unconstrained Noir Support](./unconstrained_support.md)
   - [Specification Syntax](./specification_syntax.md)
+  - [Machine-readable reports](./machine_readable_reports.md)
   - [Limitations](./limitations.md)

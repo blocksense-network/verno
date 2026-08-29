@@ -2,6 +2,7 @@ pub mod annotations;
 pub mod bigint_bridge;
 pub mod driver;
 pub mod param_source;
+pub mod payload;
 pub mod signed_field;
 pub mod venir_communication;
 pub mod vir_backend;

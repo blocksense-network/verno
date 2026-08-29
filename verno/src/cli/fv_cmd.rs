@@ -10,7 +10,15 @@ use formal_verification::{
     driver::compilation_pipeline::{
         compile_and_build_vir_for_entry_prechecked, compile_and_build_vir_krate,
     },
-    venir_communication::venir_verify,
+    payload::{
+        FindingKind, Outcome, Trust,
+        emit::{
+            PayloadBuilder, default_report_path, solver_invoked, solver_unavailable,
+            venir_oracle_footprint,
+        },
+        panic_report,
+    },
+    venir_communication::{VenirRun, venir_verify},
 };
 use nargo::{
     ops::report_errors,
@@ -54,6 +62,20 @@ pub struct FormalVerifyCommand {
     #[arg(long, hide = true)]
     pub show_vir: bool,
 
+    /// Where to write the structured verification report.
+    ///
+    /// Defaults to `<target-dir>/verno-report.json`, which is written on every
+    /// run whether or not this flag is given. The default is a *convention*
+    /// rather than an opt-in because the tool that consumes it cannot ask for
+    /// it: CodeTracer runs the command a project declares in its own
+    /// `tasks.json` and adds nothing to it (`Noir-Studio.md` §9.3).
+    #[arg(long, value_name = "PATH")]
+    pub report_json: Option<PathBuf>,
+
+    /// Do not write the structured verification report.
+    #[arg(long, conflicts_with = "report_json")]
+    pub no_report_json: bool,
+
     // Flags which will be propagated to the Venir binary
     #[clap(last = true)]
     venir_flags: Vec<String>,
@@ -95,18 +117,149 @@ impl WorkspaceCommand for FormalVerifyCommand {
     }
 }
 
+/// What a verification run established, before the report is written.
+///
+/// `failure` is the terminal `CliError` the command must still return, kept
+/// separate so the report can be written first. A run that ends in an error is
+/// precisely the run whose report is worth having.
+struct RunSummary {
+    outcome: Outcome,
+    detail: String,
+    solver_started: bool,
+    solver_unavailable_reason: Option<String>,
+    venir_args: Vec<String>,
+    venir_exit_code: Option<i32>,
+    failure: Option<String>,
+}
+
+impl RunSummary {
+    fn pipeline_error(detail: impl Into<String>, failure: impl Into<String>) -> RunSummary {
+        RunSummary {
+            outcome: Outcome::PipelineError,
+            detail: detail.into(),
+            solver_started: false,
+            solver_unavailable_reason: Some(
+                "the run ended before the solver was started".to_string(),
+            ),
+            venir_args: Vec::new(),
+            venir_exit_code: None,
+            failure: Some(failure.into()),
+        }
+    }
+
+    /// Fold one `venir` invocation into the run.
+    ///
+    /// The run's outcome is the **first** one that is not `proved`. Ranking
+    /// them against each other would need an order nobody has agreed on — is a
+    /// missing solver worse than an unproven obligation? — and "the first thing
+    /// that was not a proof" is both defensible and reproducible.
+    fn absorb(&mut self, run: &VenirRun) {
+        if self.outcome == Outcome::Proved && run.outcome != Outcome::Proved {
+            self.outcome = run.outcome;
+            self.detail = run.detail.clone();
+        }
+        self.solver_started = self.solver_started || run.solver_started;
+        if self.solver_unavailable_reason.is_none() {
+            self.solver_unavailable_reason = run.solver_unavailable_reason.clone();
+        }
+        self.venir_args = run.venir_args.clone();
+        self.venir_exit_code = run.exit_code.or(self.venir_exit_code);
+        if self.failure.is_none() {
+            self.failure = run.failure.clone();
+        }
+    }
+}
+
 pub(crate) fn run(args: FormalVerifyCommand, workspace: Workspace) -> Result<(), CliError> {
+    let report_path: Option<PathBuf> = if args.no_report_json {
+        None
+    } else {
+        Some(
+            args.report_json
+                .clone()
+                .unwrap_or_else(|| default_report_path(&workspace.target_directory_path())),
+        )
+    };
+
+    let argv: Vec<String> = std::env::args().collect();
+    let mut builder = PayloadBuilder::new(&workspace.root_dir, argv.clone());
+    let package_name = workspace
+        .members
+        .iter()
+        .find(|package| package.is_binary())
+        .map(|package| package.name.to_string());
+    let entry_file = args.target_path.as_ref().map(|path| path.display().to_string());
+    builder.set_package(package_name.clone());
+    builder.set_entry_file(entry_file.clone());
+
+    // Two of the six outcomes arrive as panics and unwind past every return
+    // path here, so the hook is the only place that can write their report.
+    if let Some(path) = &report_path {
+        panic_report::arm(
+            path.clone(),
+            builder.started_at_unix_ms(),
+            workspace.root_dir.display().to_string(),
+            package_name,
+            entry_file,
+            argv,
+        );
+    }
+
     let (workspace_file_manager, parsed_files) = parse_workspace(&workspace, None);
-    if let Some(target_path) = args.target_path.clone() {
+    let summary = if let Some(target_path) = args.target_path.clone() {
         verify_functions_in_file(
             &args,
             &workspace,
             &workspace_file_manager,
             &parsed_files,
             target_path.as_path(),
+            &mut builder,
         )
     } else {
-        verify_workspace_binaries(&args, &workspace, &workspace_file_manager, &parsed_files)
+        verify_workspace_binaries(
+            &args,
+            &workspace,
+            &workspace_file_manager,
+            &parsed_files,
+            &mut builder,
+        )
+    };
+
+    // The run reached a return path, so the hook must not fire on some later
+    // panic and overwrite what we are about to write.
+    panic_report::disarm();
+
+    if let Some(path) = &report_path {
+        let solver = if summary.solver_started {
+            solver_invoked()
+        } else {
+            solver_unavailable(
+                summary
+                    .solver_unavailable_reason
+                    .clone()
+                    .unwrap_or_else(|| "no solver was started".to_string()),
+            )
+        };
+        let oracle = if summary.solver_started {
+            Some(venir_oracle_footprint(&summary.venir_args, summary.venir_exit_code))
+        } else {
+            None
+        };
+        let payload = builder.finish(summary.outcome, summary.detail.clone(), solver, oracle);
+        if let Err(problem) = payload.write_to(path) {
+            // Loud, and on stderr, but never fatal: a verification result the
+            // developer can read is worth more than a report file, and
+            // swallowing this would hide a producer bug from the one person
+            // who could fix it.
+            eprintln!("verno: could not write {}: {problem}", path.display());
+        } else {
+            println!("verno: wrote verification report to {}", path.display());
+        }
+    }
+
+    match summary.failure {
+        Some(message) => Err(CliError::Generic(message)),
+        None => Ok(()),
     }
 }
 
@@ -115,7 +268,17 @@ fn verify_workspace_binaries(
     workspace: &Workspace,
     workspace_file_manager: &fm::FileManager,
     parsed_files: &ParsedFiles,
-) -> Result<(), CliError> {
+    builder: &mut PayloadBuilder,
+) -> RunSummary {
+    let mut summary = RunSummary {
+        outcome: Outcome::Proved,
+        detail: "verification successful".to_string(),
+        solver_started: false,
+        solver_unavailable_reason: None,
+        venir_args: Vec::new(),
+        venir_exit_code: None,
+        failure: None,
+    };
     let mut verified_any = false;
 
     for package in workspace.members.iter().filter(|package| package.is_binary()) {
@@ -123,32 +286,164 @@ fn verify_workspace_binaries(
             prepare_package(workspace_file_manager, parsed_files, package);
         configure_context(&mut context, workspace, package, crate_id);
 
-        let krate: Krate = report_errors(
-            compile_and_build_vir_krate(&mut context, crate_id, &args.compile_options),
+        let compiled = compile_and_build_vir_krate(&mut context, crate_id, &args.compile_options);
+        record_compilation_errors(builder, workspace_file_manager, &compiled);
+
+        let krate: Krate = match report_errors(
+            compiled,
             workspace_file_manager,
             parsed_files,
             args.compile_options.deny_warnings,
             true,
-        )?;
+        ) {
+            Ok(krate) => krate,
+            Err(error) => {
+                return RunSummary::pipeline_error(
+                    "the Noir front end rejected the program",
+                    error.to_string(),
+                );
+            }
+        };
 
         maybe_print_vir(args.show_vir, &krate);
 
-        venir_verify(
+        match venir_verify(
             krate,
             workspace_file_manager,
             args.compile_options.deny_warnings,
             &args.venir_flags,
-        )?;
+        ) {
+            Ok(run) => {
+                record_venir_run(builder, workspace_file_manager, &run);
+                summary.absorb(&run);
+                if summary.failure.is_some() {
+                    return summary;
+                }
+            }
+            Err(error) => {
+                return RunSummary::pipeline_error(
+                    "the solver could not be driven to completion",
+                    error.to_string(),
+                );
+            }
+        }
 
         verified_any = true;
     }
 
     if verified_any {
-        Ok(())
+        if summary.outcome == Outcome::Proved && builder.finding_count() == 0 {
+            builder.add_finding(
+                FindingKind::Proved,
+                "Every proof obligation was discharged.",
+                "",
+                None,
+                "Verification successful!",
+                "a discharged obligation has nothing to mark",
+                Trust::diagnostic_only(
+                    "the per-finding record of a success; the run's own trust class carries \
+                     the solver oracle footprint",
+                ),
+            );
+        }
+        summary
     } else {
-        Err(CliError::Generic(
-            "no binary packages with a `main` function were found; provide a Noir file path or point `--program-dir` at a binary crate".to_string(),
-        ))
+        let message = "no binary packages with a `main` function were found; provide a Noir file path or point `--program-dir` at a binary crate".to_string();
+        builder.add_finding(
+            FindingKind::PipelineError,
+            message.clone(),
+            "",
+            None,
+            message.clone(),
+            "the error is about the workspace, not about a line of Noir",
+            Trust::diagnostic_only("the run reports on the workspace, not on a program"),
+        );
+        RunSummary::pipeline_error("no binary package to verify", message)
+    }
+}
+
+/// Record the front end's diagnostics before `report_errors` consumes them.
+///
+/// `report_errors` prints and discards. Borrowing the error list first is the
+/// whole of what is needed to keep the structure — the rendered text and the
+/// payload then describe the same diagnostics rather than one being
+/// reconstructed from the other.
+fn record_compilation_errors(
+    builder: &mut PayloadBuilder,
+    workspace_file_manager: &fm::FileManager,
+    compiled: &noirc_driver::CompilationResult<Krate>,
+) {
+    let Err(errors) = compiled else {
+        return;
+    };
+    for diagnostic in errors {
+        builder.add_diagnostic(
+            workspace_file_manager,
+            diagnostic,
+            FindingKind::PipelineError,
+            Trust::diagnostic_only(
+                "a front-end error: Verno never reached the solver, so nothing was \
+                 established about the program",
+            ),
+        );
+    }
+}
+
+/// Record what `venir` said, as findings.
+fn record_venir_run(
+    builder: &mut PayloadBuilder,
+    workspace_file_manager: &fm::FileManager,
+    run: &VenirRun,
+) {
+    // The finding kind comes from the *outcome*, once, exactly as it does on
+    // the consumer side. A run that exhausted its budget cannot contribute a
+    // failed obligation even though its diagnostic is an `error:` block, and a
+    // run that crashed cannot contribute one either.
+    let kind = FindingKind::for_outcome(run.outcome);
+    match run.outcome {
+        Outcome::NoSolver => {
+            builder.add_finding(
+                kind,
+                "The Noir to VIR pipeline completed; the solver was not started.",
+                "Verno's solver back end (`venir`) is not available on this machine, so no \
+                 proof was attempted. Nothing was established either way.",
+                None,
+                run.failure.clone().unwrap_or_default(),
+                "no obligation was attempted, so there is nothing to point at",
+                Trust::diagnostic_only("no solver ran; nothing was established either way"),
+            );
+        }
+        Outcome::TimedOut => {
+            builder.add_finding(
+                kind,
+                "The solver ran out of budget before it could answer.",
+                "Not a failed proof: nothing was established either way. Re-run with a \
+                 larger `--rlimit` to get an answer.",
+                None,
+                run.detail.clone(),
+                "an exhausted budget is a property of the run, not of one line",
+                Trust::diagnostic_only(
+                    "the solver exhausted its resource limit; nothing was established",
+                ),
+            );
+        }
+        Outcome::Proved => {}
+        _ => {
+            for diagnostic in &run.diagnostics {
+                if !diagnostic.is_error() {
+                    continue;
+                }
+                builder.add_diagnostic(
+                    workspace_file_manager,
+                    diagnostic,
+                    kind,
+                    Trust::diagnostic_only(
+                        "the solver did not discharge this obligation; with quantifiers and \
+                         a resource limit that is not a proof the program is wrong",
+                    ),
+                );
+            }
+        }
     }
 }
 
@@ -158,85 +453,188 @@ fn verify_functions_in_file(
     workspace_file_manager: &fm::FileManager,
     parsed_files: &ParsedFiles,
     target_path: &Path,
-) -> Result<(), CliError> {
+    builder: &mut PayloadBuilder,
+) -> RunSummary {
     let normalized_target = target_path.normalize();
 
-    if normalized_target.extension() != Some(OsStr::new(FILE_EXTENSION)) {
-        return Err(CliError::Generic(format!(
-            "expected Noir source file with .{} extension, received `{}`",
-            FILE_EXTENSION,
-            normalized_target.display()
-        )));
+    macro_rules! workspace_error {
+        ($detail:expr, $message:expr) => {{
+            let message: String = $message;
+            builder.add_finding(
+                FindingKind::PipelineError,
+                message.clone(),
+                "",
+                None,
+                message.clone(),
+                "the error is about the invocation, not about a line of Noir",
+                Trust::diagnostic_only("the run reports on the invocation, not on a program"),
+            );
+            return RunSummary::pipeline_error($detail, message);
+        }};
     }
 
-    let package = find_enclosing_package(workspace, &normalized_target).ok_or_else(|| {
-        CliError::Generic(format!(
-            "`{}` does not belong to any package in the current workspace",
-            normalized_target.display()
-        ))
-    })?;
+    if normalized_target.extension() != Some(OsStr::new(FILE_EXTENSION)) {
+        workspace_error!(
+            "the target is not a Noir source file",
+            format!(
+                "expected Noir source file with .{} extension, received `{}`",
+                FILE_EXTENSION,
+                normalized_target.display()
+            )
+        );
+    }
 
-    let _ = workspace_file_manager.name_to_id(normalized_target.clone()).ok_or_else(|| {
-        CliError::Generic(format!(
-            "file `{}` is not part of the selected workspace; ensure it is included in the package",
-            normalized_target.display()
-        ))
-    })?;
+    let Some(package) = find_enclosing_package(workspace, &normalized_target) else {
+        workspace_error!(
+            "the target is outside the workspace",
+            format!(
+                "`{}` does not belong to any package in the current workspace",
+                normalized_target.display()
+            )
+        );
+    };
+
+    if workspace_file_manager.name_to_id(normalized_target.clone()).is_none() {
+        workspace_error!(
+            "the target is not part of the selected workspace",
+            format!(
+                "file `{}` is not part of the selected workspace; ensure it is included in the package",
+                normalized_target.display()
+            )
+        );
+    }
 
     let (mut context, crate_id) = prepare_package(workspace_file_manager, parsed_files, package);
     configure_context(&mut context, workspace, package, crate_id);
 
     let comp_result = check_crate(&mut context, crate_id, &args.compile_options);
+    record_check_errors(builder, workspace_file_manager, &comp_result);
 
-    report_errors(
+    if let Err(error) = report_errors(
         comp_result,
         workspace_file_manager,
         parsed_files,
         args.compile_options.deny_warnings,
         true,
-    )?;
+    ) {
+        return RunSummary::pipeline_error(
+            "the Noir front end rejected the program",
+            error.to_string(),
+        );
+    }
 
     let mut functions_to_verify =
         collect_functions_defined_in_file(&context, crate_id, &normalized_target);
     if functions_to_verify.is_empty() {
-        return Err(CliError::Generic(format!(
-            "no verifiable functions were found in `{}`",
-            normalized_target.display()
-        )));
+        workspace_error!(
+            "the file declares nothing to verify",
+            format!("no verifiable functions were found in `{}`", normalized_target.display())
+        );
     }
 
     functions_to_verify.sort_by(|lhs, rhs| {
         function_sort_key(&context, lhs).cmp(&function_sort_key(&context, rhs))
     });
 
+    let mut summary = RunSummary {
+        outcome: Outcome::Proved,
+        detail: "verification successful".to_string(),
+        solver_started: false,
+        solver_unavailable_reason: None,
+        venir_args: Vec::new(),
+        venir_exit_code: None,
+        failure: None,
+    };
+
     for func_id in functions_to_verify {
         let function_name = context.fully_qualified_function_name(&crate_id, &func_id);
         println!("Verifying `{function_name}`...");
 
-        let krate: Krate = report_errors(
-            compile_and_build_vir_for_entry_prechecked(
-                &mut context,
-                crate_id,
-                func_id,
-                &args.compile_options,
-            ),
+        let compiled = compile_and_build_vir_for_entry_prechecked(
+            &mut context,
+            crate_id,
+            func_id,
+            &args.compile_options,
+        );
+        record_compilation_errors(builder, workspace_file_manager, &compiled);
+
+        let krate: Krate = match report_errors(
+            compiled,
             workspace_file_manager,
             parsed_files,
             args.compile_options.deny_warnings,
             true,
-        )?;
+        ) {
+            Ok(krate) => krate,
+            Err(error) => {
+                return RunSummary::pipeline_error(
+                    "the Noir front end rejected the program",
+                    error.to_string(),
+                );
+            }
+        };
 
         maybe_print_vir(args.show_vir, &krate);
 
-        venir_verify(
+        match venir_verify(
             krate,
             workspace_file_manager,
             args.compile_options.deny_warnings,
             &args.venir_flags,
-        )?;
+        ) {
+            Ok(run) => {
+                record_venir_run(builder, workspace_file_manager, &run);
+                summary.absorb(&run);
+                if summary.failure.is_some() {
+                    return summary;
+                }
+            }
+            Err(error) => {
+                return RunSummary::pipeline_error(
+                    "the solver could not be driven to completion",
+                    error.to_string(),
+                );
+            }
+        }
     }
 
-    Ok(())
+    if summary.outcome == Outcome::Proved && builder.finding_count() == 0 {
+        builder.add_finding(
+            FindingKind::Proved,
+            "Every proof obligation was discharged.",
+            "",
+            None,
+            "Verification successful!",
+            "a discharged obligation has nothing to mark",
+            Trust::diagnostic_only(
+                "the per-finding record of a success; the run's own trust class carries the \
+                 solver oracle footprint",
+            ),
+        );
+    }
+    summary
+}
+
+/// The same capture as `record_compilation_errors`, for `check_crate`'s result.
+fn record_check_errors<T>(
+    builder: &mut PayloadBuilder,
+    workspace_file_manager: &fm::FileManager,
+    checked: &noirc_driver::CompilationResult<T>,
+) {
+    let Err(errors) = checked else {
+        return;
+    };
+    for diagnostic in errors {
+        builder.add_diagnostic(
+            workspace_file_manager,
+            diagnostic,
+            FindingKind::PipelineError,
+            Trust::diagnostic_only(
+                "a front-end error: Verno never reached the solver, so nothing was \
+                 established about the program",
+            ),
+        );
+    }
 }
 
 fn configure_context(

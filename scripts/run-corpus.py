@@ -271,6 +271,87 @@ def expected_outcomes(kind: str) -> set[str]:
     return {NOT_PROVED, NO_SOLVER, PIPELINE_ERROR}
 
 
+# ---------------------------------------------------------------------------
+# VN-M4: the structured payload, cross-checked against this classifier
+# ---------------------------------------------------------------------------
+
+PAYLOAD_SCHEMA = "codetracer.verification/v1"
+PAYLOAD_FILE = "verno-report.json"
+
+
+def check_payloads(results: list[Result]) -> tuple[int, list[str]]:
+    """Compare each entry's structured report against what this script classified.
+
+    This is the regression guard for VN-M4's emitter, and it is cheap because the
+    corpus has already run: every entry has just written a
+    `target/verno-report.json`, and every entry has just been classified from text
+    by `classify()` above. The two are computed by completely different means —
+    one from values inside Verno, the other by matching strings in its output —
+    so an agreement across the whole corpus is worth something, and a
+    disagreement is a real defect in one of them.
+
+    Two ways to fail, and the second matters as much as the first:
+
+    * any entry whose payload names a different outcome than the text did;
+    * **zero payloads found at all**, which would mean the emitter has stopped
+      running and would otherwise let this check pass vacuously — the failure
+      mode this project has already found five times.
+
+    A *missing* payload for some entries is only reported. An entry that panics
+    hard enough to take the process down before the hook runs would have none,
+    and that is a fact about that entry rather than a fault in the emitter.
+    """
+    agreed = 0
+    missing: list[str] = []
+    problems: list[str] = []
+
+    for result in results:
+        report_path = (
+            REPO_ROOT / "test_programs" / result.kind / result.name / "target" / PAYLOAD_FILE
+        )
+        if not report_path.exists():
+            missing.append(f"{result.kind}/{result.name}")
+            continue
+        try:
+            payload = json.loads(report_path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            problems.append(f"{result.kind}/{result.name}: unreadable report ({error})")
+            continue
+        if payload.get("schema") != PAYLOAD_SCHEMA:
+            problems.append(
+                f"{result.kind}/{result.name}: report declares schema "
+                f"{payload.get('schema')!r}, expected {PAYLOAD_SCHEMA!r}"
+            )
+            continue
+        if payload.get("outcome") != result.outcome:
+            problems.append(
+                f"{result.kind}/{result.name}: report says {payload.get('outcome')!r} "
+                f"where the classifier read {result.outcome!r} — {result.detail}"
+            )
+            continue
+        agreed += 1
+
+    print()
+    print(
+        f"structured reports: {agreed} of {len(results)} agree with the classifier"
+        + (f", {len(missing)} absent" if missing else "")
+    )
+    for problem in problems:
+        print(f"  {problem}")
+    if missing and len(missing) <= 10:
+        for name in missing:
+            print(f"  no report written: {name}")
+
+    if agreed == 0 and results:
+        problems.append(
+            "no entry produced a structured report at all; the emitter is not running, "
+            "and this check would otherwise have passed by finding nothing to check"
+        )
+        print(f"  {problems[-1]}")
+
+    return agreed, problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--json", type=Path, help="write the full report here")
@@ -280,6 +361,14 @@ def main() -> int:
         help="compare against a previous --json report and fail on a regression",
     )
     parser.add_argument("--filter", help="only run entries whose name contains this")
+    parser.add_argument(
+        "--no-payload-check",
+        action="store_true",
+        help=(
+            "skip the VN-M4 cross-check of each entry's structured report against "
+            "this script's own classification of its text"
+        ),
+    )
     parser.add_argument(
         "--write-baseline",
         type=Path,
@@ -331,10 +420,16 @@ def main() -> int:
             destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
             print(f"\nwrote {destination}")
 
+    payload_problems: list[str] = []
+    if not args.no_payload_check:
+        _, payload_problems = check_payloads(results)
+
     exit_code = 0
     if args.baseline:
         exit_code = compare_to_baseline(json.loads(args.baseline.read_text()), results)
     elif unexpected:
+        exit_code = 1
+    if payload_problems:
         exit_code = 1
     return exit_code
 

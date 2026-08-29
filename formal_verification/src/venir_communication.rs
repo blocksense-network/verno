@@ -12,6 +12,44 @@ use noirc_errors::{
 use serde::Deserialize;
 use vir::ast::Krate;
 
+use crate::payload::Outcome;
+
+/// The string Verus uses when a proof attempt exhausts its resource budget.
+///
+/// It arrives as an ordinary `SmtOutput::Error`, so this string is the only
+/// thing distinguishing "the solver ran out of budget" from "the solver
+/// rejected the program". From `air/src/main.rs` in the pinned `verus-lib`
+/// revision, and mirrored in `scripts/run-corpus.py` and in CodeTracer's
+/// `verification_report.nim`.
+pub const RLIMIT_MARKER: &str = "Resource limit (rlimit) exceeded";
+
+/// What one `venir` invocation established, structurally.
+///
+/// This exists so that the outcome reaches the payload emitter as a *value*
+/// rather than being recovered from rendered text further up. `venir_verify`
+/// used to return `Result<(), CliError>` and destroy every distinction on the
+/// way out; the classification below is the same one the text tier has to
+/// reconstruct by string matching, made once, at the place that actually knows.
+pub struct VenirRun {
+    /// Whether the `venir` process was started at all.
+    pub solver_started: bool,
+    /// Why it was not, when it was not.
+    pub solver_unavailable_reason: Option<String>,
+    pub outcome: Outcome,
+    /// One line saying why, in the shape `run-corpus.py` writes into its report.
+    pub detail: String,
+    /// The diagnostics as `report_all` rendered them, kept rather than dropped.
+    pub diagnostics: Vec<CustomDiagnostic>,
+    pub exit_code: Option<i32>,
+    /// The terminal error the CLI must return, spelled exactly as it was
+    /// before this type existed. Returning it from here rather than raising it
+    /// lets the caller write a report first — a run that ends in an error is
+    /// precisely the run whose report is worth having.
+    pub failure: Option<String>,
+    /// The arguments handed through to `venir`, for the oracle footprint.
+    pub venir_args: Vec<String>,
+}
+
 /// Runs the Venir binary and passes the compiled program in VIR format to it
 /// Reports all errors produced during Venir (SMT solver) verification
 pub fn venir_verify(
@@ -19,19 +57,45 @@ pub fn venir_verify(
     workspace_file_manager: &FileManager,
     deny_warnings: bool,
     venir_args: &Vec<String>,
-) -> Result<(), CliError> {
+) -> Result<VenirRun, CliError> {
+    let mut run = VenirRun {
+        solver_started: false,
+        solver_unavailable_reason: None,
+        outcome: Outcome::PipelineError,
+        detail: String::new(),
+        diagnostics: Vec::new(),
+        exit_code: None,
+        failure: None,
+        venir_args: venir_args.clone(),
+    };
     let serialized_vir_krate = serde_json::to_string(&krate).expect("Failed to serialize");
 
     // Run the Venir binary which is used for verifying the vir_krate input.
-    let mut child = Command::new("venir")
+    let spawned = Command::new("venir")
         .args(venir_args.iter())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| CliError::Generic(
-            format!("Failed to start the Venir binary with the following error message\n{}\nTo fix this issue you can run the command nix develop", e.to_string())
-        ))?;
+        .spawn();
+
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(e) => {
+            // Not a proof result. Nothing was established either way, and the
+            // payload says exactly that rather than leaving the caller to
+            // recognise this sentence.
+            let message = format!(
+                "Failed to start the Venir binary with the following error message\n{}\nTo fix this issue you can run the command nix develop",
+                e
+            );
+            run.outcome = Outcome::NoSolver;
+            run.detail = "Noir -> VIR pipeline completed; `venir` not available".to_string();
+            run.solver_unavailable_reason = Some(format!("could not start `venir`: {e}"));
+            run.failure = Some(message);
+            return Ok(run);
+        }
+    };
+    run.solver_started = true;
 
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(serialized_vir_krate.as_bytes()).map_err(|e| {
@@ -54,6 +118,7 @@ pub fn venir_verify(
     let stderr_output = String::from_utf8_lossy(&output.stderr);
 
     let has_crashed = !output.status.success();
+    run.exit_code = output.status.code();
 
     let mut smt_outputs: Vec<SmtOutput> = Vec::new();
     let mut failed_deserialization_lines: Vec<&str> = Vec::new();
@@ -70,9 +135,9 @@ pub fn venir_verify(
             "Failed to deserialize the following lines:\n{}",
             failed_deserialization_lines.join("\n")
         );
-        return Err(CliError::Generic(format!(
-            "Failed to deserialize all lines outputted by Venir"
-        )));
+        run.detail = "`venir` wrote lines its own output standard does not describe".to_string();
+        run.failure = Some("Failed to deserialize all lines outputted by Venir".to_string());
+        return Ok(run);
     }
     // Verus reports Notes in reverse order.
     smt_outputs.reverse();
@@ -100,19 +165,63 @@ pub fn venir_verify(
         false,
     );
 
+    // The outcome, decided here, from values.
+    //
+    // Ordering mirrors `run-corpus.py::classify` for the case the two can both
+    // see: a resource-limit exhaustion is recognised **before** anything is
+    // allowed to count as a lost proof, because Verus serialises it as an
+    // ordinary error block and it is one string away from a genuine rejection.
+    let exhausted_budget = verification_diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains(RLIMIT_MARKER)
+            || diagnostic.secondaries.iter().any(|label| label.message.contains(RLIMIT_MARKER))
+    });
+
+    run.diagnostics = verification_diagnostics;
+
     if has_crashed {
-        return Err(CliError::Generic(format!("Verification crashed!")));
+        // `venir` exited non-zero. The solver ran and failed to answer, which
+        // none of the six outcomes names exactly; `pipeline-error` is the one
+        // that does not claim anything about the program, which is the
+        // property that matters. Note that the *text* tier classifies this as
+        // `not-proved`, because `run-corpus.py::reached_solver` treats
+        // "Verification crashed" as having reached the solver — the two tiers
+        // disagree here, and the consumer's rule is to keep the text verdict
+        // and refuse the payload rather than silently prefer either.
+        run.outcome = Outcome::PipelineError;
+        run.detail = "`venir` exited non-zero; the solver did not answer".to_string();
+        run.failure = Some("Verification crashed!".to_string());
+        return Ok(run);
+    }
+
+    if exhausted_budget {
+        run.outcome = Outcome::TimedOut;
+        run.detail = "solver rlimit exhausted".to_string();
+        run.failure = Some(format!(
+            "Verification failed due to {} previous errors!",
+            reported_errors.error_count,
+        ));
+        return Ok(run);
     }
 
     if reported_errors.error_count > 0 {
-        return Err(CliError::Generic(format!(
+        run.outcome = Outcome::NotProved;
+        run.detail = run
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.kind == DiagnosticKind::Error)
+            .map(|diagnostic| diagnostic.message.clone())
+            .unwrap_or_else(|| "the solver did not discharge every obligation".to_string());
+        run.failure = Some(format!(
             "Verification failed due to {} previous errors!",
             reported_errors.error_count,
-        )));
+        ));
+        return Ok(run);
     }
 
+    run.outcome = Outcome::Proved;
+    run.detail = "verification successful".to_string();
     println!("Verification successful!");
-    Ok(())
+    Ok(run)
 }
 
 /// Part of the Venir output standard.
