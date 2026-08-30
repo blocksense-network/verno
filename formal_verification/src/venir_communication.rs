@@ -13,6 +13,7 @@ use serde::Deserialize;
 use vir::ast::Krate;
 
 use crate::payload::Outcome;
+use crate::payload::counterexample::VenirModel;
 
 /// The string Verus uses when a proof attempt exhausts its resource budget.
 ///
@@ -40,6 +41,16 @@ pub struct VenirRun {
     pub detail: String,
     /// The diagnostics as `report_all` rendered them, kept rather than dropped.
     pub diagnostics: Vec<CustomDiagnostic>,
+    /// The solver's counterexample model for each diagnostic, aligned index for
+    /// index with [`VenirRun::diagnostics`]. `None` where there was none, which
+    /// is every diagnostic that is not a failed proof and every failed proof
+    /// from a `venir` that predates the model.
+    ///
+    /// Aligned rather than embedded because `diagnostics` is handed to
+    /// `report_all` and to the outcome classifier as-is; the pairing is
+    /// established before either runs and is asserted, so the two vectors cannot
+    /// drift.
+    pub models: Vec<Option<VenirModel>>,
     pub exit_code: Option<i32>,
     /// The terminal error the CLI must return, spelled exactly as it was
     /// before this type existed. Returning it from here rather than raising it
@@ -64,6 +75,7 @@ pub fn venir_verify(
         outcome: Outcome::PipelineError,
         detail: String::new(),
         diagnostics: Vec::new(),
+        models: Vec::new(),
         exit_code: None,
         failure: None,
         venir_args: venir_args.clone(),
@@ -139,17 +151,30 @@ pub fn venir_verify(
         run.failure = Some("Failed to deserialize all lines outputted by Venir".to_string());
         return Ok(run);
     }
-    // Verus reports Notes in reverse order.
-    smt_outputs.reverse();
 
-    let mut verification_diagnostics: Vec<CustomDiagnostic> = smt_outputs
+    let mut paired = pair_counterexamples_with_errors(smt_outputs);
+
+    // Verus reports Notes in reverse order.
+    paired.reverse();
+
+    let mut verification_diagnostics: Vec<(CustomDiagnostic, Option<VenirModel>)> = paired
         .into_iter()
-        .map(|smt_output| smt_output_to_diagnostic(smt_output, &workspace_file_manager))
+        .map(|(smt_output, model)| {
+            (smt_output_to_diagnostic(smt_output, &workspace_file_manager), model)
+        })
         .collect();
 
-    // Sort errors by span.
+    // Sort errors by span. The model travels with its diagnostic.
     verification_diagnostics
-        .sort_by_key(|diag| diag.secondaries.first().map(|label| label.location.span.start()));
+        .sort_by_key(|(diag, _)| diag.secondaries.first().map(|label| label.location.span.start()));
+
+    let (verification_diagnostics, models): (Vec<CustomDiagnostic>, Vec<Option<VenirModel>>) =
+        verification_diagnostics.into_iter().unzip();
+    assert_eq!(
+        verification_diagnostics.len(),
+        models.len(),
+        "a model must accompany exactly one diagnostic"
+    );
 
     // Report errors from the verification process.
     // `report_all` gained a `&FunctionLocations` argument since `beta.13`; it is used only
@@ -177,6 +202,7 @@ pub fn venir_verify(
     });
 
     run.diagnostics = verification_diagnostics;
+    run.models = models;
 
     if has_crashed {
         // `venir` exited non-zero. The solver ran and failed to answer, which
@@ -245,6 +271,20 @@ struct CrashBlock {
     crash_span: String,
 }
 
+/// Part of the Venir output standard.
+///
+/// New in the revision of `venir` that stops discarding the solver's model. A
+/// `venir` that predates it never writes this line and everything below simply
+/// sees `None`; a `venir` that writes it against a Verno that did not know the
+/// variant would have failed *every* run, because an unknown variant makes
+/// `serde_json` reject the line and `venir_verify` treats an unparsed line as a
+/// pipeline error. The two therefore move together, and that is deliberate:
+/// silently ignoring an output shape is how a producer and a consumer drift.
+#[derive(Deserialize)]
+struct CounterexampleBlock {
+    model: VenirModel,
+}
+
 /// The possible outputs of the Venir binary.
 #[derive(Deserialize)]
 enum SmtOutput {
@@ -252,6 +292,7 @@ enum SmtOutput {
     Warning(WarningBlock),
     Note(String),
     AirMessage(CrashBlock),
+    Counterexample(CounterexampleBlock),
 }
 
 /// Maps a Venir output to a Noir diagnostic type error.
@@ -306,6 +347,12 @@ fn smt_output_to_diagnostic(
             call_stack: CallStack::empty(),
         },
 
+        // Handled before this function is reached: a counterexample is not a
+        // diagnostic, it is evidence attached to one.
+        SmtOutput::Counterexample(_) => {
+            CustomDiagnostic::from_message("internal: unattached counterexample", default_file_id)
+        }
+
         SmtOutput::AirMessage(crash_block) => {
             let span = convert_span(&crash_block.crash_span);
             match span {
@@ -326,6 +373,50 @@ fn smt_output_to_diagnostic(
             }
         }
     }
+}
+
+/// Attach each counterexample model to the message it explains.
+///
+/// `air` reports the model from inside `smt_get_model`, while the error it
+/// belongs to is returned up to `rust_verify` and reported afterwards -- so on
+/// the wire the model is the line **before** its error. That adjacency is the
+/// only thing tying the two together when the query carried no assert-id, and
+/// both the reversal and the span sort that follow would destroy it. So the
+/// pairing is made here, once, on the order `venir` actually wrote.
+///
+/// Only an `Error` takes a model. A note or a warning between the two is
+/// transparent rather than absorbing: it is not the thing the model explains,
+/// and swallowing the model there would attach it to nothing.
+fn pair_counterexamples_with_errors(
+    smt_outputs: Vec<SmtOutput>,
+) -> Vec<(SmtOutput, Option<VenirModel>)> {
+    let mut paired: Vec<(SmtOutput, Option<VenirModel>)> = Vec::new();
+    let mut pending_model: Option<VenirModel> = None;
+    for smt_output in smt_outputs {
+        match smt_output {
+            SmtOutput::Counterexample(block) => {
+                // Two models in a row would mean the first one's error never
+                // arrived. Keep the newer one and say so, rather than attaching a
+                // model to a message it does not describe.
+                if pending_model.is_some() {
+                    println!(
+                        "`venir` reported two counterexample models with no error between them; \
+                         the earlier one is dropped"
+                    );
+                }
+                pending_model = Some(block.model);
+            }
+            other => {
+                let model =
+                    if matches!(other, SmtOutput::Error(_)) { pending_model.take() } else { None };
+                paired.push((other, model));
+            }
+        }
+    }
+    if pending_model.is_some() {
+        println!("`venir` reported a counterexample model with no error after it; it is dropped");
+    }
+    paired
 }
 
 /// Returns `FileId` for given id. `FileId` doesn't have a public constructor.
@@ -354,4 +445,146 @@ fn convert_span(input: &str) -> Option<(u32, u32, usize)> {
     let file_id = parts[2].parse::<usize>().ok()?;
 
     Some((start_byte, final_byte, file_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::payload::counterexample::VenirBinding;
+
+    /// Counted assertions, so a check that stopped asserting shows in the output.
+    struct Counted {
+        name: &'static str,
+        n: usize,
+    }
+
+    impl Counted {
+        fn new(name: &'static str) -> Counted {
+            Counted { name, n: 0 }
+        }
+        fn eq<T: std::fmt::Debug + PartialEq>(&mut self, what: &str, actual: T, expected: T) {
+            self.n += 1;
+            assert_eq!(actual, expected, "[{}] {}", self.name, what);
+        }
+        fn done(self, expected: usize) {
+            assert_eq!(
+                self.n, expected,
+                "[{}] made {} assertions, expected {}",
+                self.name, self.n, expected
+            );
+            println!("[{}] {} assertions", self.name, self.n);
+        }
+    }
+
+    fn model(tag: &str) -> VenirModel {
+        VenirModel {
+            parameters: vec![VenirBinding {
+                variable: tag.to_string(),
+                constant: tag.to_string(),
+                value: "1".to_string(),
+                typ: "Int".to_string(),
+            }],
+            ..VenirModel::default()
+        }
+    }
+
+    fn cx(tag: &str) -> SmtOutput {
+        SmtOutput::Counterexample(CounterexampleBlock { model: model(tag) })
+    }
+
+    fn error(message: &str) -> SmtOutput {
+        SmtOutput::Error(ErrorBlock {
+            error_message: message.to_string(),
+            error_span: String::new(),
+            secondary_message: String::new(),
+        })
+    }
+
+    /// What the pairing produced, as `(message, model tag)`.
+    fn pairs(outputs: Vec<SmtOutput>) -> Vec<(String, Option<String>)> {
+        pair_counterexamples_with_errors(outputs)
+            .into_iter()
+            .map(|(out, model)| {
+                let label = match &out {
+                    SmtOutput::Error(e) => e.error_message.clone(),
+                    SmtOutput::Warning(w) => w.warning_message.clone(),
+                    SmtOutput::Note(n) => n.clone(),
+                    SmtOutput::AirMessage(c) => c.crash_message.clone(),
+                    SmtOutput::Counterexample(_) => "counterexample".to_string(),
+                };
+                (label, model.map(|m| m.parameters[0].variable.clone()))
+            })
+            .collect()
+    }
+
+    /// P1: a model belongs to the error that follows it, and is not itself a
+    /// message. A model attached to the wrong error is worse than no model, so
+    /// each of these arms names one way the attachment could go wrong.
+    #[test]
+    fn p1_a_model_attaches_to_the_error_that_follows_it() {
+        let mut c = Counted::new("P1");
+
+        c.eq(
+            "the following error takes it",
+            pairs(vec![cx("m0"), error("first")]),
+            vec![("first".to_string(), Some("m0".to_string()))],
+        );
+
+        c.eq(
+            "an error with no model before it takes none",
+            pairs(vec![error("lonely")]),
+            vec![("lonely".to_string(), None)],
+        );
+
+        c.eq(
+            "only the first of two errors takes the one model",
+            pairs(vec![cx("m0"), error("first"), error("second")]),
+            vec![("first".to_string(), Some("m0".to_string())), ("second".to_string(), None)],
+        );
+
+        c.eq(
+            "each model goes to its own error",
+            pairs(vec![cx("m0"), error("first"), cx("m1"), error("second")]),
+            vec![
+                ("first".to_string(), Some("m0".to_string())),
+                ("second".to_string(), Some("m1".to_string())),
+            ],
+        );
+
+        c.done(4);
+    }
+
+    /// P2: notes and warnings are transparent, not absorbing.
+    #[test]
+    fn p2_a_note_between_a_model_and_its_error_does_not_absorb_it() {
+        let mut c = Counted::new("P2");
+        c.eq(
+            "the note carries nothing and the error still gets the model",
+            pairs(vec![cx("m0"), SmtOutput::Note("chosen trigger".to_string()), error("first")]),
+            vec![
+                ("chosen trigger".to_string(), None),
+                ("first".to_string(), Some("m0".to_string())),
+            ],
+        );
+        c.done(1);
+    }
+
+    /// P3: a model with nothing after it is dropped rather than attached
+    /// backwards, and a counterexample never becomes a diagnostic of its own.
+    #[test]
+    fn p3_an_unattached_model_is_dropped() {
+        let mut c = Counted::new("P3");
+        c.eq(
+            "a trailing model reaches no message",
+            pairs(vec![error("first"), cx("m0")]),
+            vec![("first".to_string(), None)],
+        );
+        c.eq("a model on its own produces no message at all", pairs(vec![cx("m0")]), Vec::new());
+        c.eq(
+            "two models in a row: the second wins, the first is dropped",
+            pairs(vec![cx("m0"), cx("m1"), error("first")]),
+            vec![("first".to_string(), Some("m1".to_string()))],
+        );
+        c.done(3);
+    }
 }

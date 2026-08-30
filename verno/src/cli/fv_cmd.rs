@@ -429,11 +429,11 @@ fn record_venir_run(
         }
         Outcome::Proved => {}
         _ => {
-            for diagnostic in &run.diagnostics {
+            for (index, diagnostic) in run.diagnostics.iter().enumerate() {
                 if !diagnostic.is_error() {
                     continue;
                 }
-                builder.add_diagnostic(
+                let finding_id = builder.add_diagnostic(
                     workspace_file_manager,
                     diagnostic,
                     kind,
@@ -442,6 +442,16 @@ fn record_venir_run(
                          a resource limit that is not a proof the program is wrong",
                     ),
                 );
+                // The counterexample belongs to the obligation this diagnostic
+                // reports, and only when the run is a failed proof: the wire
+                // rules refuse a counterexample under any other outcome, because
+                // a model of a query the solver never rejected would be evidence
+                // for a claim nobody made.
+                if run.outcome == Outcome::NotProved {
+                    if let Some(Some(model)) = run.models.get(index) {
+                        builder.add_counterexample(&finding_id, model);
+                    }
+                }
             }
         }
     }

@@ -28,15 +28,17 @@
 //! in a payload at all, because the producer is killed before it can write one;
 //! see [`Outcome::TimedOut`].
 //!
-//! **2. Nothing is ever silently empty.** Verno's solver back end, `venir`,
-//! returns five strings per diagnostic and *no model at all* (see
-//! `venir_communication.rs`, and `blocksense-network/Venir`'s
-//! `src/stub_structs.rs`, which discards the `Option<Model>` that
-//! `air::context::ValidityResult::Invalid` hands it). So the model in a Verno
-//! counterexample is absent today. It is absent *explicitly*: [`ModelStatus`]
-//! is a required field and `Unavailable` carries a required reason. An empty
-//! binding list without a status would read as "the solver found no relevant
-//! variables", which is a different and false claim.
+//! **2. Nothing is ever silently empty.** Verno's solver back end used to
+//! return five strings per diagnostic and no model at all. It now returns the
+//! solver's own model as well -- `air` stopped discarding the `(get-model)`
+//! response it had already parsed, and `venir` writes it as a `Counterexample`
+//! line; see [`counterexample`] and `venir_communication.rs`. What it still does
+//! not return is a proof-goal structure or any SMT text, and a `venir` older
+//! than that change returns no model either. So a slot Verno cannot fill is
+//! present and *explicitly* empty: [`ModelStatus`] is a required field and
+//! `Unavailable` carries a required reason. An empty binding list without a
+//! status would read as "the solver found no relevant variables", which is a
+//! different and false claim.
 //!
 //! **3. Every payload carries its trust class.** [`TrustClass`] has the four
 //! values the visualization spec lists, and it is a required field on the
@@ -47,12 +49,15 @@
 //!
 //! # What Verno can honestly fill today
 //!
-//! The envelope, the findings with their Noir spans, and the source map. Not
-//! the counterexample body, not the goal tree, not the SMT query text — none of
-//! those exist at the `venir` boundary. Where the contract has a slot Verno
-//! cannot fill, the slot is present and empty with a stated reason rather than
-//! omitted, so a consumer can tell "this producer does not have it" from "this
-//! run did not produce it".
+//! The envelope, the findings with their Noir spans, the source map, and — since
+//! VN-M5 — the counterexample body: the solver's values, the program points it
+//! passed through in the order it reached them, and the obligation it violates.
+//! Not the goal tree and not the SMT query text; neither exists at the `venir`
+//! boundary. Not a source position for a program point either: the
+//! snapshot-to-span map (`SnapPos`) is built inside `vir`/`rust_verify` and does
+//! not cross. Where the contract has a slot Verno cannot fill, the slot is
+//! present and empty with a stated reason rather than omitted, so a consumer can
+//! tell "this producer does not have it" from "this run did not produce it".
 
 use std::collections::BTreeMap;
 use std::io;
@@ -60,6 +65,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub mod counterexample;
 pub mod emit;
 pub mod panic_report;
 
@@ -951,6 +957,9 @@ fn check_trust(trust: &Trust, subject: &str, fail: &mut impl FnMut(String)) {
 
 #[cfg(test)]
 mod conformance_tests;
+
+#[cfg(test)]
+mod counterexample_tests;
 
 #[cfg(test)]
 mod tests;

@@ -22,10 +22,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use fm::{FileId, FileManager};
 use noirc_errors::{CustomDiagnostic, Location};
 
+use super::counterexample::{ObligationInfo, VenirModel, trace_from_model};
 use super::{
     ContractViolation, Finding, FindingKind, OracleFootprint, Outcome, Producer,
-    ProofVisualizationSourceMap, REPORT_FILE_NAME, RunInfo, SCHEMA_ID, SolverInfo, SourceFile,
-    SourceLocation, Trust, VerificationPayload,
+    ProofVisualizationSourceMap, REPORT_FILE_NAME, RunInfo, SCHEMA_ID, SolverCounterexampleTrace,
+    SolverInfo, SourceFile, SourceLocation, Trust, VerificationPayload,
 };
 
 /// The Noir release Verno is built against.
@@ -34,6 +35,24 @@ use super::{
 /// build script. The two are kept in agreement by a test in this crate, not by
 /// hope — see `tests::the_noir_release_constant_matches_the_pin`.
 pub const NOIR_RELEASE: &str = "v1.0.0-beta.26";
+
+/// What a counterexample says it is a counterexample *to*, read off the finding.
+///
+/// Taken from the finding rather than passed in beside it, so the violation the
+/// trace marks and the diagnostic the developer reads cannot end up pointing at
+/// different places. The secondary label is preferred over the headline because
+/// that is the one that names the obligation ("assertion failed") rather than
+/// the function it was in.
+pub fn obligation_from(finding: &Finding) -> ObligationInfo {
+    ObligationInfo {
+        message: if finding.detail.is_empty() {
+            finding.message.clone()
+        } else {
+            finding.detail.clone()
+        },
+        location: finding.location.clone(),
+    }
+}
 
 /// Milliseconds since the Unix epoch, or 0 if the clock is before it.
 pub fn now_unix_ms() -> u64 {
@@ -63,6 +82,7 @@ pub struct PayloadBuilder {
     file_ids: Vec<usize>,
     findings: Vec<Finding>,
     next_finding: usize,
+    counterexample_traces: Vec<SolverCounterexampleTrace>,
 }
 
 impl PayloadBuilder {
@@ -77,6 +97,7 @@ impl PayloadBuilder {
             file_ids: Vec::new(),
             findings: Vec::new(),
             next_finding: 0,
+            counterexample_traces: Vec::new(),
         }
     }
 
@@ -219,6 +240,27 @@ impl PayloadBuilder {
         self.findings.len()
     }
 
+    pub fn counterexample_count(&self) -> usize {
+        self.counterexample_traces.len()
+    }
+
+    /// Attach the solver's counterexample to a finding already added.
+    ///
+    /// Returns the trace's id, or `None` when the model carried no values -- a
+    /// trace with no bindings and no steps would satisfy every wire rule and
+    /// then be offered to a developer as an execution to walk through. The
+    /// obligation's location is taken from the finding rather than passed in
+    /// separately, so the marked violation and the rendered diagnostic point at
+    /// the same place by construction.
+    pub fn add_counterexample(&mut self, finding_id: &str, model: &VenirModel) -> Option<String> {
+        let finding = self.findings.iter().find(|f| f.id == finding_id)?;
+        let obligation = obligation_from(finding);
+        let id = format!("cx{}", self.counterexample_traces.len());
+        let trace = trace_from_model(id.clone(), finding_id, model, obligation)?;
+        self.counterexample_traces.push(trace);
+        Some(id)
+    }
+
     /// Close the payload.
     ///
     /// `solver` says whether a solver process was started; the run trust class
@@ -272,15 +314,14 @@ impl PayloadBuilder {
             outcome_detail: outcome_detail.into(),
             trust,
             findings: self.findings,
-            // Nothing below this line can be filled by this producer today, and
-            // the reason is `venir`, not the platform. `venir`'s reporter
-            // (`src/stub_structs.rs` in `blocksense-network/Venir`) serialises
-            // four message shapes carrying five strings between them, and
-            // discards the `Option<Model>` that `air`'s
-            // `ValidityResult::Invalid` hands it. Until that changes there is
-            // no model, no goal tree and no query text to emit — so these stay
-            // empty rather than being filled with plausible-looking data.
-            counterexample_traces: Vec::new(),
+            counterexample_traces: self.counterexample_traces,
+            // Still nothing to put here, and the reason is still `venir`. It
+            // carries the solver's model now; it carries no proof-goal structure
+            // and no SMT text at all -- `air` computes `time_smt_init`,
+            // `time_smt_run` and `rlimit_count` per bucket and prints none of
+            // them, and the unsat core is only requested under a feature Venir
+            // does not enable. Empty rather than filled with plausible-looking
+            // data.
             goal_trees: Vec::new(),
             solver_queries: Vec::new(),
             source_map: ProofVisualizationSourceMap { files: self.files },

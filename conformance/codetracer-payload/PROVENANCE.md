@@ -20,14 +20,32 @@ off `main` `5b2d32e`, built as `target/debug/verno`.
 `Failed to start the Venir binary`. A `proved` or a `not-proved` outcome cannot
 be produced here at all.
 
-**And a second constraint, which is new and is not about the machine:** even on
-Linux, **`venir` returns no counterexample model.** Its whole output surface is
-four JSON shapes carrying five strings between them
-(`blocksense-network/Venir`, `src/stub_structs.rs`), and its `Reporter` receives
-diagnostics only — `air::context::ValidityResult::Invalid(Option<Model>, ..)`
-is destructured inside `rust_verify` and the model never reaches the reporter.
-So `not_proved_with_model.json` below is **not** something a Linux run would
-produce today either, and it says so in its own contents.
+**A second constraint used to stand here and has been removed** (VN-M5,
+2026-08-30). It read: even on Linux, `venir` returns no counterexample model.
+That was true, and the reason was never `venir` — `air`'s `smt_get_model`
+already parsed the solver's whole `(get-model)` response, used it to find the
+failing label, and dropped it. `blocksense-network/verus-lib`
+`vn-m5/counterexample-model` keeps it, and `venir` now writes a
+`Counterexample` line carrying the values and the program points, in the order
+the program reaches them.
+
+**What that does and does not change for the fixtures below.**
+`not_proved_with_model.json` is still hand-authored and is **not** replaced,
+because the model was only ever half of what makes it hypothetical. The other
+half is the envelope around it — `run.workspace_root`, `producer.version`,
+`run.started_at_unix_ms`, the findings and the source map — and none of that
+can be recorded without a Linux run of `verno` with `venir`. Splicing a real
+model into a hand-authored envelope would make the file *look* more like a
+recording than it is, which is precisely what its two guard assertions
+(`producer.version == "0.0.0-hypothetical"` and a `run.workspace_root`
+containing `NOT A RECORDING`) exist to prevent. They stay, and so does the
+fixture, until one Linux run can replace the whole document at once.
+
+A real solver-produced model **is** now under test, on the producer side:
+`formal_verification/src/payload/counterexample_tests.rs` carries the verbatim
+line `air --print-model` wrote for a real z3 4.15.1 run, and nine checks decode
+it. That is a different claim from "this conformance fixture is a recording",
+and it is kept in a different place on purpose.
 
 ## Accepted fixtures
 
