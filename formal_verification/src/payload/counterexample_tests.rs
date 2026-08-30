@@ -409,6 +409,15 @@ fn w8_a_payload_carrying_the_model_passes_the_producer_s_own_rules() {
     let mut c = Counted::new("W8");
 
     let (payload, attached_to) = payload_with_counterexample(Outcome::NotProved);
+    // Printed under `--nocapture` because this is the exact document the
+    // CodeTracer-side checks decode. CodeTracer's
+    // `tests/fixtures/verno/counterexample/verno_emitted_solver_model.json` is
+    // this output with three machine-specific fields substituted (the two
+    // timestamps and `run.workspace_root`, which is set to a string saying it is
+    // not a recording); its PROVENANCE.md names this command. Producing that
+    // document here rather than writing it there by hand is what makes the two
+    // sides a boundary rather than two guesses.
+    println!("{}", payload.to_json().unwrap_or_default());
     c.eq("one counterexample was attached", payload.counterexample_traces.len(), 1);
     c.eq("and the payload breaks no rule", payload.check(), Vec::new());
     c.that("so it serialises", payload.to_json().is_ok());
