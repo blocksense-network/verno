@@ -18,6 +18,16 @@ customRustPlatform.buildRustPackage rec {
   binaryName = "venir";
   version = "0.1.0";
 
+  # Build nightly-only features on a stable channel.
+  #
+  # Not a hack, and not ours: `rust_verify` opens with
+  # `#![feature(rustc_private)]` and five more `#![feature]`s, and Verus' own
+  # build tool `vargo` sets exactly this variable for exactly this reason.
+  # `venir-toolchain.toml` pins a *stable* 1.82.0 with the `rustc-dev`
+  # component, and without this the build stops at
+  # `error[E0554]: #![feature] may not be used on the stable release channel`.
+  # Removing it means moving the pin to a nightly, which changes what the
+  # verifier is built against.
   RUSTC_BOOTSTRAP = 1;
 
   doCheck = false;
@@ -41,7 +51,20 @@ customRustPlatform.buildRustPackage rec {
     };
   };
 
-  preFixup = ''
-    patchelf --set-rpath "${venir-toolchain}/lib" "$out/bin/${binaryName}"
-  '';
+  # `venir` links against the toolchain's rustc dylibs, so the binary needs an
+  # rpath to them. The mechanism is genuinely per-system and is written as one
+  # rather than as a platform gate: ELF and Mach-O have different tools and
+  # different flags, and the previous unconditional `patchelf` simply does not
+  # exist on darwin -- which is why a darwin-built `venir` failed at run time
+  # with `Library not loaded: @rpath/librustc_driver-*.dylib` and
+  # `no LC_RPATH's found`.
+  preFixup =
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      ''
+        install_name_tool -add_rpath "${venir-toolchain}/lib" "$out/bin/${binaryName}"
+      ''
+    else
+      ''
+        patchelf --set-rpath "${venir-toolchain}/lib" "$out/bin/${binaryName}"
+      '';
 }

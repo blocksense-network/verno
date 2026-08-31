@@ -21,6 +21,9 @@ customRustPlatform.buildRustPackage rec {
 
   z3_path = pkgsForZ3.z3_4_12;
   VERUS_Z3_PATH = "${z3_path}/bin/z3";
+  # See the note on the same variable in `derivation.nix`: Verus' own `vargo`
+  # sets it, because `rust_verify` uses `#![feature(rustc_private)]` on a
+  # deliberately stable pin.
   RUSTC_BOOTSTRAP = 1;
   VERUS_IN_VARGO = 1;
   RUSTFLAGS = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations";
@@ -72,10 +75,13 @@ customRustPlatform.buildRustPackage rec {
 
     mkdir -p $RUSTUP_HOME $CARGO_HOME
 
-    # The name for our toolchain is very deliberate. If we were to change the rust versin,
-    # we would most likely need change this also
-    # TODO: I am very happy for suggestions how to circumvent this naming
-    # (We can always change the source code for vstd in our fork of Verus)
+    # This string is an arbitrary *rustup alias* for the toolchain linked on
+    # the line above. It is NOT a platform assertion and NOT a version
+    # assertion, despite reading like both: `x86_64-known-linux-gnu` is not a
+    # target triple (the real one is `-unknown-`), and `venir-toolchain.toml`
+    # pins 1.82.0, not 1.76.0. Kept verbatim only because changing a working
+    # alias cannot be tested from every host at once; the misleading part is
+    # the name, and this comment is the fix for that.
     rustup toolchain link 1.76.0-x86_64-known-linux-gnu ${venir-toolchain.out}
     rustup default 1.76.0-x86_64-known-linux-gnu
 
