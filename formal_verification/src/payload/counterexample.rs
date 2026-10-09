@@ -1,8 +1,8 @@
 //! Turning `venir`'s counterexample model into the payload's
 //! [`SolverCounterexampleTrace`](super::SolverCounterexampleTrace).
 //!
-//! **This is new ground for the campaign.** Every earlier milestone recorded
-//! that `venir` returns no model. That was true, and the reason was not `venir`:
+//! **This is new ground.** Until this module existed, `venir` was taken to
+//! return no model. That was true, and the reason was not `venir`:
 //! `air`'s `smt_get_model` parsed the whole of the solver's `(get-model)`
 //! response, used it to find the failing `%%location_label%%`, and dropped it.
 //! `blocksense-network/verus-lib` no longer does, and `venir` now writes a

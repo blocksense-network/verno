@@ -1,7 +1,7 @@
 //! The conformance corpus, checked against the producer's own rules.
 //!
 //! `conformance/codetracer-payload/` holds one JSON document per case. Both
-//! sides of the VN-M4 contract test against the *same bytes*: this crate
+//! sides of the payload contract test against the *same bytes*: this crate
 //! validates them here, and CodeTracer's decoder validates a vendored copy in
 //! `src/frontend/viewmodel/tests/fixtures/verno/payload/`. The two copies are
 //! tied together by `manifest.json`, which lists a SHA-256 for every file and
