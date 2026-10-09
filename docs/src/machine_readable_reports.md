@@ -16,8 +16,7 @@ suppresses it.
 The report exists so an editor can show a verification result without scraping
 Verno's terminal output. The editor that consumes it first — CodeTracer —
 launches whatever command a project declares in its own `tasks.json` and adds
-nothing to it, by design ([Noir-Studio §9.3][noir-studio]: *"we surface what a
-project declares and invent no manifest of our own"*). It therefore cannot
+nothing to it, by design. It therefore cannot
 append `--report-json` for you. A report only reaches it if Verno writes one
 unprompted, at a place the consumer knows to look.
 
@@ -46,7 +45,7 @@ target directory, which `nargo clean` removes along with everything else there.
 Three things about it are worth knowing before you use it.
 
 **The outcome is one of six, and only one of them is a failed proof.** They are
-the same six [`scripts/run-corpus.py`](https://github.com/blocksense-network/verno/blob/main/scripts/run-corpus.py)
+the same six [`scripts/run-corpus.py`](https://github.com/blocksense-network/verno/blob/dev/scripts/run-corpus.py)
 reports, spelled identically. An unsupported construct
 (see [Limitations](./limitations.md)) is `unsupported` and carries a
 `limitation` finding naming the construct; it is never a failed obligation, and
@@ -80,9 +79,8 @@ schema change on either side.
 
 ## The contract, and testing against it
 
-The full contract — field by field, with the rules a consumer must refuse a
-document for — is
-[Verification-Payload-Contract-v1.md][contract] in the CodeTracer specs.
+The contract is defined by CodeTracer, the first consumer, and is tested
+from both sides.
 
 `conformance/codetracer-payload/` in this repository is a corpus both sides
 test against: seven documents a conforming consumer must accept, ten it must
@@ -90,6 +88,3 @@ refuse, and a `PROVENANCE.md` saying which were produced by a real run and
 which were written by hand. `manifest.json` lists a SHA-256 for each and is
 byte-identical to the copy CodeTracer holds, so a fixture edited on one side
 and not the other fails on both.
-
-[noir-studio]: https://github.com/metacraft-labs/codetracer-specs/blob/main/Planned-Features/Noir-Studio.md
-[contract]: https://github.com/metacraft-labs/codetracer-specs/blob/main/Planned-Features/Verification-Payload-Contract-v1.md

@@ -68,7 +68,7 @@ pub struct FormalVerifyCommand {
     /// run whether or not this flag is given. The default is a *convention*
     /// rather than an opt-in because the tool that consumes it cannot ask for
     /// it: CodeTracer runs the command a project declares in its own
-    /// `tasks.json` and adds nothing to it (`Noir-Studio.md` §9.3).
+    /// `tasks.json` and adds nothing to it.
     #[arg(long, value_name = "PATH")]
     pub report_json: Option<PathBuf>,
 

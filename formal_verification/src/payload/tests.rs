@@ -1,4 +1,4 @@
-//! Tests for the VN-M4 payload contract.
+//! Tests for the payload contract.
 //!
 //! These run in CI: `cargo test -p formal_verification --lib --locked` is the
 //! job that does not need `venir`, and none of the assertions below do either.
@@ -233,7 +233,7 @@ fn a_failed_obligation_is_diagnostic_only_and_never_evidence_the_program_is_wron
 
 #[test]
 fn a_limitation_cannot_appear_in_a_payload_that_answers_correctness() {
-    // This is VN-M3's central property, restated as a wire rule. The check
+    // A limitation is never a failed proof; this restates that as a wire rule. The check
     // exists so a future emitter cannot produce the document at all.
     let mut builder = builder();
     builder.add_finding(

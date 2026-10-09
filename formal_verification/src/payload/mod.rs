@@ -1,4 +1,4 @@
-//! VN-M4 — the structured verification payload Verno emits for CodeTracer.
+//! The structured verification payload Verno emits for CodeTracer.
 //!
 //! # What this is
 //!
@@ -9,10 +9,8 @@
 //! ever supplies one — a counterexample, a proof-goal tree and the solver query
 //! behind them.
 //!
-//! The consumer side is specified in
-//! `codetracer-specs/Planned-Features/SMT-Counterexample-And-Prover-State-Visualization.md`.
-//! **That document owns the payload names**; this module is an emitter for them,
-//! not a second schema. The five names it lists — `SolverCounterexampleTrace`,
+//! The payload names are owned by the consumer, CodeTracer; this module is an
+//! emitter for them, not a second schema. The five names — `SolverCounterexampleTrace`,
 //! `ProofGoalTree`, `ProverStateFrame`, `SolverQueryAttachment` and
 //! `ProofVisualizationSourceMap` — appear here as
 //! [`SolverCounterexampleTrace`], [`ProofGoalTree`], [`ProverStateFrame`],
@@ -49,8 +47,8 @@
 //!
 //! # What Verno can honestly fill today
 //!
-//! The envelope, the findings with their Noir spans, the source map, and — since
-//! VN-M5 — the counterexample body: the solver's values, the program points it
+//! The envelope, the findings with their Noir spans, the source map, and the
+//! counterexample body: the solver's values, the program points it
 //! passed through in the order it reached them, and the obligation it violates.
 //! Not the goal tree and not the SMT query text; neither exists at the `venir`
 //! boundary. Not a source position for a program point either: the
@@ -80,9 +78,7 @@ pub const SCHEMA_ID: &str = "codetracer.verification/v1";
 /// The file name Verno writes inside the package's target directory.
 ///
 /// This is a convention rather than a flag because CodeTracer cannot add a flag:
-/// `Noir-Studio.md` §9.3 has the IDE surface the actions a project declares and
-/// "invent no manifest of our own", so the IDE runs the project's own
-/// `tasks.json` command verbatim. A payload only reaches CodeTracer if Verno
+/// the IDE runs the project's own `tasks.json` command verbatim. A payload only reaches CodeTracer if Verno
 /// writes it without being asked.
 pub const REPORT_FILE_NAME: &str = "verno-report.json";
 
@@ -750,7 +746,7 @@ impl VerificationPayload {
             fail(format!("schema is `{}`, expected `{}`", self.schema, SCHEMA_ID));
         }
 
-        // A limitation is not a proof result. This is VN-M3's central property,
+        // A limitation is not a proof result. This is a central property,
         // restated as a wire rule so that it cannot be lost in translation.
         for finding in &self.findings {
             if finding.kind == FindingKind::Limitation && self.outcome.answers_correctness() {

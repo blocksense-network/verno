@@ -70,7 +70,7 @@ pub fn inline_global_consts(
 
 /// Converts a comptime `Integer` to Verno's `num_bigint::BigInt`.
 ///
-/// This crosses the `num-bigint` version boundary described in the VN-M1 survey §6:
+/// This crosses the `num-bigint` version boundary described in `crate::bigint_bridge`:
 /// Noir `v1.0.0-beta.26` is on `num-bigint 0.5`, while Verno and the Verus `vir` crate it
 /// links are on `0.4`. The two `BigInt` types are distinct to the compiler, so nothing that
 /// comes out of the Noir side can be used directly. Rather than move Verno to 0.5 (which

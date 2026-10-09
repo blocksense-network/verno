@@ -1,14 +1,18 @@
 name: CI
 
 # Verno had no CI at all until this file existed, and that is the direct cause of the
-# thirteen-release drift VN-M1 measured: the Noir pin was a *branch* on a fork, nothing ever
+# thirteen-release drift the Noir pin had accumulated: the Noir pin was a *branch* on a fork, nothing ever
 # built against upstream, and nobody could see how old the pin had become. Every job below
 # exists to make one specific kind of drift visible at the commit that introduces it.
 
 on:
   push:
-    branches: [main]
+    # The product mainline and the release branch (branching-policy.md). Not
+    # `agents`: that branch has no CI by policy; its gates run locally.
+    branches: [dev, stable]
   pull_request:
+    # Listed explicitly so pull requests into `agents` do not run CI either.
+    branches: [dev, stable]
   # The drift job needs a schedule: drift is not introduced by a commit, it accumulates
   # while nobody commits anything.
   schedule:
@@ -62,7 +66,7 @@ jobs:
       - name: cargo test (unit tests)
         # The integration tests under verno/tests need a working `venir`; see the corpus
         # job. These are the pure-Rust ones, including the `num-bigint` boundary
-        # conversions, the vendored `SignedField` arithmetic, and VN-M4's payload contract
+        # conversions, the vendored `SignedField` arithmetic, and the payload contract
         # — which includes validating every document in `conformance/codetracer-payload/`
         # against the same rules CodeTracer's decoder applies to its own copy of them.
         run: cargo test -p formal_verification --lib --locked
@@ -112,7 +116,7 @@ jobs:
         # availability change rather than as a regression, and a solver-backed baseline
         # should be recorded the first time this job runs with one.
         #
-        # This step also carries VN-M4's emitter gate. Every entry writes a
+        # This step also carries the payload emitter's gate. Every entry writes a
         # `target/verno-report.json`, and the runner compares each report's outcome
         # against its own classification of the same run's text. The two are computed by
         # completely different means — one from values inside Verno, the other by matching

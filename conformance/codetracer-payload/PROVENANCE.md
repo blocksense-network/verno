@@ -1,4 +1,4 @@
-# The VN-M4 conformance corpus — where each fixture came from
+# The payload conformance corpus — where each fixture came from
 
 These are the shared test inputs for the `codetracer.verification/v1` payload
 contract. Verno produces the payload; CodeTracer consumes it. Both sides test
@@ -20,8 +20,8 @@ off `main` `5b2d32e`, built as `target/debug/verno`.
 `Failed to start the Venir binary`. A `proved` or a `not-proved` outcome cannot
 be produced here at all.
 
-**A second constraint used to stand here and has been removed** (VN-M5,
-2026-08-30). It read: even on Linux, `venir` returns no counterexample model.
+**A second constraint used to stand here and has been removed**
+(2026-08-30). It read: even on Linux, `venir` returns no counterexample model.
 That was true, and the reason was never `venir` — `air`'s `smt_get_model`
 already parsed the solver's whole `(get-model)` response, used it to find the
 failing label, and dropped it. `blocksense-network/verus-lib`
@@ -54,7 +54,7 @@ and it is kept in a different place on purpose.
 | `no_solver.json` | Real `verno` run, this machine, 2026-08-29 | No — this is the payload that says so |
 | `unsupported_lambda.json` | Real `verno` run, this machine, 2026-08-29 | No — refused before the solver |
 | `pipeline_error_type_mismatch.json` | Real `verno` run, this machine, 2026-08-29 | No — refused before the solver |
-| `proved.json` | Hand-authored against the schema | **No.** Nothing has ever proved anything in this campaign |
+| `proved.json` | Hand-authored against the schema | **No.** No real run has produced a proof yet |
 | `not_proved_assertion.json` | Hand-authored against the schema | **No** |
 | `not_proved_with_model.json` | Hand-authored, and **hypothetical** — see below | **No** |
 | `timed_out_rlimit.json` | Hand-authored against the schema | **No** |
@@ -89,7 +89,7 @@ Nothing else was edited. In particular the timestamps, the outcome, the
 findings, the trust classes and the **line and column numbers** are as the
 producer wrote them.
 
-`pipeline_error_type_mismatch.json` earns its place the way VN-M3's fixture of
+`pipeline_error_type_mismatch.json` earns its place the way an earlier fixture of
 the same name did, and for the same reason. Its two findings sit at `2:20` and
 `1:24`, and the `noirc_errors::reporter` block the same run printed to stderr
 reads `┌─ src/main.nr:2:20` and `┌─ src/main.nr:1:24`. That is the *whole* of
@@ -156,9 +156,8 @@ checks every digest against its own copy of the fixtures.
 
 The consequence is the one that matters: a fixture edited in one repository and
 not the other **fails in both**. Without it, the two sides could quietly test
-different corpora and both stay green — which is exactly the failure this
-milestone's "conformance fixture set both sides test against" deliverable is
-about.
+different corpora and both stay green — which is exactly the failure a
+shared conformance corpus exists to prevent.
 
 Regenerating after an intentional change means regenerating in **both**
 repositories, in the same commit pair.

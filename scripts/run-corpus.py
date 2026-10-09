@@ -68,7 +68,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RLIMIT = int(os.environ.get("VERNO_CORPUS_RLIMIT", "10"))
 
 #: Wall-clock backstop per corpus entry, in seconds. Only reached if a process hangs;
-#: the SMT rlimit above should bite first. VN-M0 measured the whole corpus completing the
+#: the SMT rlimit above should bite first. A measured run took the whole corpus completing the
 #: Noir->VIR pipeline in 43.4 s *in total*, so 120 s for a single entry is generous.
 WALL_CLOCK_TIMEOUT_SECS = float(os.environ.get("VERNO_CORPUS_TIMEOUT_SECS", "120"))
 
@@ -272,7 +272,7 @@ def expected_outcomes(kind: str) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
-# VN-M4: the structured payload, cross-checked against this classifier
+# The structured payload, cross-checked against this classifier
 # ---------------------------------------------------------------------------
 
 PAYLOAD_SCHEMA = "codetracer.verification/v1"
@@ -282,7 +282,7 @@ PAYLOAD_FILE = "verno-report.json"
 def check_payloads(results: list[Result]) -> tuple[int, list[str]]:
     """Compare each entry's structured report against what this script classified.
 
-    This is the regression guard for VN-M4's emitter, and it is cheap because the
+    This is the regression guard for the payload emitter, and it is cheap because the
     corpus has already run: every entry has just written a
     `target/verno-report.json`, and every entry has just been classified from text
     by `classify()` above. The two are computed by completely different means —
@@ -365,7 +365,7 @@ def main() -> int:
         "--no-payload-check",
         action="store_true",
         help=(
-            "skip the VN-M4 cross-check of each entry's structured report against "
+            "skip the cross-check of each entry's structured report against "
             "this script's own classification of its text"
         ),
     )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation harness for the counterexample checks (VN-M5).
+"""Mutation harness for the counterexample checks.
 
 Each mutation patches one line of the product and requires that the **named**
 check fails. A mutation killed by some other check is reported as MISDIRECTED
@@ -16,7 +16,7 @@ Covers three files:
     error it explains, which is the only thing tying the two together on a wire
     where the model is a separate line.
 
-Per `codetracer-specs/Testing/Verification-Harness-Traps.md`: the verdict comes
+The verdict comes
 from the parsed per-test result lines, never from the exit code, and a run that
 produced no result lines is a harness failure rather than a kill.
 

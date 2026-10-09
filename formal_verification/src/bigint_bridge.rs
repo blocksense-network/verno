@@ -6,7 +6,7 @@
 //! compiler, so any value that comes out of a Noir API on `0.5` has to be rebuilt before it
 //! can be used with `vir`.
 //!
-//! VN-M1 §6 weighed three ways to close this: convert at the boundary, move Verno to `0.5`
+//! There are three ways to close this: convert at the boundary, move Verno to `0.5`
 //! and convert at the `vir` edge instead, or move the Verus pin forward to a revision on
 //! `0.5`. Converting here is the cheapest and is the only one of the three that leaves the
 //! Verus pin — and therefore the serialised `Krate` that `venir` must agree on — untouched.
