@@ -3,3 +3,6 @@ target/
 **/contract
 **/target
 default.nix
+
+# Repro development environment cache
+.repro/
