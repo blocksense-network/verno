@@ -7,8 +7,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # The product mainline and the release branch (branching-policy.md). Not
+    # `agents`: that branch has no CI by policy; its gates run locally.
+    branches: [dev, stable]
   pull_request:
+    # Listed explicitly so pull requests into `agents` do not run CI either.
+    branches: [dev, stable]
   # The drift job needs a schedule: drift is not introduced by a commit, it accumulates
   # while nobody commits anything.
   schedule:

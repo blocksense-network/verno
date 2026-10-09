@@ -46,7 +46,7 @@ target directory, which `nargo clean` removes along with everything else there.
 Three things about it are worth knowing before you use it.
 
 **The outcome is one of six, and only one of them is a failed proof.** They are
-the same six [`scripts/run-corpus.py`](https://github.com/blocksense-network/verno/blob/main/scripts/run-corpus.py)
+the same six [`scripts/run-corpus.py`](https://github.com/blocksense-network/verno/blob/dev/scripts/run-corpus.py)
 reports, spelled identically. An unsupported construct
 (see [Limitations](./limitations.md)) is `unsupported` and carries a
 `limitation` finding naming the construct; it is never a failed obligation, and
